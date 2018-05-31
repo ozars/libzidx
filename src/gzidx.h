@@ -69,10 +69,12 @@ typedef
 int (*gzidx_export_filter_callback)(void *export_context,
                                     gzidx_checkpoint_metadata *metadata);
 
-int gzidx_import_advanced(gzidx_index *index, gzidx_gzip_index_stream *stream,
+int gzidx_import_advanced(gzidx_index *index,
+                          const gzidx_gzip_index_stream *stream,
                           gzidx_import_filter_callback filter);
 
-int gzidx_export_advanced(gzidx_index *index, gzidx_gzip_index_stream *stream,
+int gzidx_export_advanced(gzidx_index *index,
+                          const gzidx_gzip_index_stream *stream,
                           gzidx_import_filter_callback filter);
 
 int gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
