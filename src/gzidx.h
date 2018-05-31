@@ -84,7 +84,7 @@ int gzidx_raw_file_eof(void *file);
 int gzidx_raw_file_error(void *file);
 int gzidx_raw_file_size(void *file);
 
-int gzidx_import(gzidx_index *index, FILE* index_file);
-int gzidx_export(gzidx_index *index, FILE* index_file);
+int gzidx_import(gzidx_index *index, FILE* input_index_file);
+int gzidx_export(gzidx_index *index, FILE* output_index_file);
 
 #endif // _GZIDX_H_
