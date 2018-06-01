@@ -4,20 +4,28 @@
 #include <stdio.h>     // FILE
 #include <sys/types.h> // off_t, size_t
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct gzidx_checkpoint_metadata_struct
 {
-
+    int uncompressed_offset;
+    int compressed_offset;
+    int compressed_offset_bits;
 } gzidx_checkpoint_metadata;
 
 typedef struct gzidx_checkpoint_struct
 {
     gzidx_checkpoint_metadata metadata;
-    void *data;
+    void *preceding_uncompressed_data;
 } gzidx_checkpoint;
 
 typedef struct gzidx_index_struct
 {
-
+    int list_count;
+    int list_size;
+    gzidx_checkpoint *list;
 } gzidx_index;
 
 typedef
@@ -93,5 +101,9 @@ int gzidx_raw_file_size(void *file);
 
 int gzidx_import(gzidx_index *index, FILE* input_index_file);
 int gzidx_export(gzidx_index *index, FILE* output_index_file);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif // _GZIDX_H_

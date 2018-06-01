@@ -1,5 +1,9 @@
 #include "gzidx.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int gzidx_import(gzidx_index *index, FILE* input_index_file)
 {
     const gzidx_gzip_index_stream input_stream = {
@@ -27,3 +31,7 @@ int gzidx_export(gzidx_index *index, FILE* output_index_file)
     };
     return gzidx_export_advanced(index, &output_stream, NULL);
 }
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
