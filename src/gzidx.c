@@ -6,6 +6,7 @@ int gzidx_import(gzidx_index *index, FILE* input_index_file)
         gzidx_raw_file_read,
         gzidx_raw_file_write,
         gzidx_raw_file_seek,
+        gzidx_raw_file_tell,
         gzidx_raw_file_eof,
         gzidx_raw_file_error,
         (void*) input_index_file
@@ -19,6 +20,7 @@ int gzidx_export(gzidx_index *index, FILE* output_index_file)
         gzidx_raw_file_read,
         gzidx_raw_file_write,
         gzidx_raw_file_seek,
+        gzidx_raw_file_tell,
         gzidx_raw_file_eof,
         gzidx_raw_file_error,
         (void*) output_index_file

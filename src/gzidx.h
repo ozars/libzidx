@@ -33,6 +33,9 @@ int (*gzidx_stream_seek_callback)(void *stream_context, off_t offset,
                                   int origin);
 
 typedef
+int (*gzidx_stream_tell_callback)(void *stream_context);
+
+typedef
 int (*gzidx_stream_eof_callback)(void *stream_context);
 
 typedef
@@ -41,10 +44,12 @@ int (*gzidx_stream_error_callback)(void *stream_context);
 typedef
 int (*gzidx_stream_size_callback)(void *stream_context);
 
+
 typedef struct gzidx_gzip_input_stream_struct
 {
     gzidx_stream_read_callback  read;
     gzidx_stream_seek_callback  seek;
+    gzidx_stream_tell_callback  tell;
     gzidx_stream_eof_callback   eof;
     gzidx_stream_error_callback error;
     gzidx_stream_size_callback  size;
@@ -56,6 +61,7 @@ typedef struct gzidx_gzip_index_stream_struct
     gzidx_stream_read_callback  read;
     gzidx_stream_write_callback write;
     gzidx_stream_seek_callback  seek;
+    gzidx_stream_tell_callback  tell;
     gzidx_stream_eof_callback   eof;
     gzidx_stream_error_callback error;
     void *context;
@@ -80,6 +86,7 @@ int gzidx_export_advanced(gzidx_index *index,
 int gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
 int gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
 int gzidx_raw_file_seek(void *file, off_t offset, int origin);
+int gzidx_raw_file_tell(void *file);
 int gzidx_raw_file_eof(void *file);
 int gzidx_raw_file_error(void *file);
 int gzidx_raw_file_size(void *file);
