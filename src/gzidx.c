@@ -87,7 +87,7 @@ int gzidx_import(gzidx_index *index, FILE* input_index_file)
     return gzidx_import_advanced(index, &input_stream, NULL);
 }
 
-int gzidx_export(gzidx_index *index, FILE* output_index_file)
+int gzidx_export(const gzidx_index *index, FILE* output_index_file)
 {
     const gzidx_gzip_index_stream output_stream = {
         gzidx_raw_file_read,
