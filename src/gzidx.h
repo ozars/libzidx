@@ -10,8 +10,8 @@ extern "C" {
 
 typedef struct gzidx_checkpoint_offset_struct
 {
-    int uncompressed_offset;
-    int compressed_offset;
+    off_t uncompressed_offset;
+    off_t compressed_offset;
     int compressed_offset_bits;
 } gzidx_checkpoint_offset;
 
