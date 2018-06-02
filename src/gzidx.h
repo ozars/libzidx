@@ -8,16 +8,16 @@
 extern "C" {
 #endif
 
-typedef struct gzidx_checkpoint_metadata_struct
+typedef struct gzidx_checkpoint_offset_struct
 {
     int uncompressed_offset;
     int compressed_offset;
     int compressed_offset_bits;
-} gzidx_checkpoint_metadata;
+} gzidx_checkpoint_offset;
 
 typedef struct gzidx_checkpoint_struct
 {
-    gzidx_checkpoint_metadata metadata;
+    gzidx_checkpoint_offset offset;
     void *preceding_uncompressed_data;
 } gzidx_checkpoint;
 
@@ -76,11 +76,11 @@ typedef struct gzidx_gzip_index_stream_struct
 
 typedef
 int (*gzidx_import_filter_callback)(void *import_context,
-                                    gzidx_checkpoint_metadata *metadata);
+                                    gzidx_checkpoint_offset *offset);
 
 typedef
 int (*gzidx_export_filter_callback)(void *export_context,
-                                    gzidx_checkpoint_metadata *metadata);
+                                    gzidx_checkpoint_offset *offset);
 
 int gzidx_import_advanced(gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
