@@ -4,6 +4,75 @@
 extern "C" {
 #endif
 
+int gzidx_raw_file_read(void *file, void *buffer, size_t nbytes)
+{
+    if(fread(buffer, nbytes, 1, (FILE*) file) != 1) {
+        return -1;
+    }
+    return 1;
+}
+
+int gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes)
+{
+    if(fwrite(buffer, nbytes, 1, (FILE*) file) != 1) {
+        return -1;
+    }
+    return 1;
+}
+
+int gzidx_raw_file_seek(void *file, off_t offset, int whence)
+{
+    #if (_FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L \
+            || _XOPEN_SOURCE >= 600)
+    return fseeko((FILE*) file, offset, whence);
+    #else
+    return fseek((FILE*) file, offset, whence);
+    #endif
+}
+
+int gzidx_raw_file_tell(void *file)
+{
+    #if (_FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L \
+            || _XOPEN_SOURCE >= 600)
+    return ftello((FILE*) file);
+    #else
+    return ftell((FILE*) file);
+    #endif
+}
+
+int gzidx_raw_file_eof(void *file)
+{
+    return feof((FILE*) file);
+}
+
+int gzidx_raw_file_error(void *file)
+{
+    return ferror((FILE*) file);
+}
+
+int gzidx_raw_file_size(void *file)
+{
+    size_t length;
+    off_t  saved_pos;
+
+    saved_pos = gzidx_raw_file_tell(file);
+    if(saved_pos < 0) goto fail;
+
+    if(gzidx_raw_file_seek(file, 0, SEEK_END) < 0) goto cleanup;
+
+    length = gzidx_raw_file_tell(file);
+    if(length < 0) goto cleanup;
+
+    if(gzidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
+
+    return length;
+
+cleanup:
+    if(gzidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
+fail:
+    return -1;
+}
+
 int gzidx_import(gzidx_index *index, FILE* input_index_file)
 {
     const gzidx_gzip_index_stream input_stream = {
