@@ -30,7 +30,7 @@ int gzidx_raw_file_seek(void *file, off_t offset, int whence)
     #endif
 }
 
-int gzidx_raw_file_tell(void *file)
+off_t gzidx_raw_file_tell(void *file)
 {
     #if (_FILE_OFFSET_BITS == 64 || _POSIX_C_SOURCE >= 200112L \
             || _XOPEN_SOURCE >= 600)
@@ -50,7 +50,7 @@ int gzidx_raw_file_error(void *file)
     return ferror((FILE*) file);
 }
 
-int gzidx_raw_file_size(void *file)
+ssize_t gzidx_raw_file_size(void *file)
 {
     size_t length;
     off_t  saved_pos;
