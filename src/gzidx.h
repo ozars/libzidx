@@ -2,33 +2,15 @@
 #define _GZIDX_H_
 
 #include <stdio.h>     // FILE
-#include <sys/types.h> // off_t, size_t
+#include <sys/types.h> // off_t, size_t, ssize_t
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct gzidx_checkpoint_offset_struct
-{
-    off_t uncompressed_offset;
-    off_t compressed_offset;
-    int compressed_offset_bits;
-} gzidx_checkpoint_offset;
+#define GZIDX_WINDOW_SIZE (0x7FFF) // 32767
 
-typedef struct gzidx_checkpoint_struct
-{
-    gzidx_checkpoint_offset offset;
-    void *preceding_uncompressed_data;
-} gzidx_checkpoint;
-
-typedef struct gzidx_index_struct
-{
-    void *stream;
-    int stream_length;
-    int list_count;
-    int list_size;
-    gzidx_checkpoint *list;
-} gzidx_index;
+/* gzidx stream functionality */
 
 typedef
 int (*gzidx_stream_read_callback)(void *stream_context, void *buffer,
@@ -75,6 +57,60 @@ typedef struct gzidx_gzip_index_stream_struct
     gzidx_stream_error_callback error;
     void *context;
 } gzidx_gzip_index_stream;
+
+/* index/checkpoint data types */
+
+typedef struct gzidx_checkpoint_offset_struct
+{
+    off_t uncompressed_offset;
+    off_t compressed_offset;
+    int compressed_offset_bits;
+} gzidx_checkpoint_offset;
+
+typedef struct gzidx_checkpoint_struct
+{
+    gzidx_checkpoint_offset offset;
+    void *preceding_uncompressed_data;
+} gzidx_checkpoint;
+
+typedef struct gzidx_index_struct
+{
+    void *gzip_stream;
+    size_t stream_length;
+    gzidx_checkpoint current_checkpoint;
+    int list_count;
+    int list_size;
+    gzidx_checkpoint *list;
+} gzidx_index;
+
+/* read/write/seek/index functions */
+
+typedef
+int (*gzidx_next_block_callback)(void *context,
+                                 gzidx_checkpoint *current_checkpoint);
+
+int gzidx_index_init(gzidx_index* index, gzidx_gzip_input_stream* gzip_stream);
+int gzidx_index_destroy(gzidx_index* index);
+int gzidx_read(gzidx_index* index, void *buffer, size_t nbytes);
+int gzidx_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
+                        gzidx_next_block_callback next_block_callback);
+int gzidx_seek(gzidx_index* index, off_t offset, int whence);
+int gzidx_seek_advanced(gzidx_index* index, off_t offset, int whence,
+                        gzidx_next_block_callback next_block_callback);
+off_t gzidx_tell(gzidx_index* index);
+int gzidx_rewind(gzidx_index* index);
+
+int gzidx_build_index(gzidx_index* index, size_t spacing);
+int gzidx_build_index_advanced(gzidx_index* index,
+                               gzidx_next_block_callback next_block_callback);
+
+int gzidx_save_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
+int gzidx_get_offset_checkpoint_index(gzidx_index* index, off_t offset);
+
+void gzidx_extend_index(gzidx_index* index);
+void gzidx_shrink_index(gzidx_index* index);
+
+/* index import/export functions */
 
 typedef
 int (*gzidx_import_filter_callback)(void *import_context,
