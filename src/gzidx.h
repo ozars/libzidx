@@ -13,12 +13,12 @@ extern "C" {
 /* gzidx stream functionality */
 
 typedef
-int (*gzidx_stream_read_callback)(void *stream_context, void *buffer,
-                                  size_t nbytes);
+size_t (*gzidx_stream_read_callback)(void *stream_context, void *buffer,
+                                     size_t nbytes);
 
 typedef
-int (*gzidx_stream_write_callback)(void *stream_context, const void *buffer,
-                                   size_t nbytes);
+size_t (*gzidx_stream_write_callback)(void *stream_context, const void *buffer,
+                                      size_t nbytes);
 
 typedef
 int (*gzidx_stream_seek_callback)(void *stream_context, off_t offset,
@@ -128,8 +128,8 @@ int gzidx_export_advanced(const gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
                           gzidx_import_filter_callback filter);
 
-int gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
-int gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
+size_t gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
+size_t gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
 int gzidx_raw_file_seek(void *file, off_t offset, int whence);
 off_t gzidx_raw_file_tell(void *file);
 int gzidx_raw_file_eof(void *file);

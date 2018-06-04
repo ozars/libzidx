@@ -4,20 +4,14 @@
 extern "C" {
 #endif
 
-int gzidx_raw_file_read(void *file, void *buffer, size_t nbytes)
+size_t gzidx_raw_file_read(void *file, void *buffer, size_t nbytes)
 {
-    if(fread(buffer, nbytes, 1, (FILE*) file) != 1) {
-        return -1;
-    }
-    return 1;
+    return fread(buffer, 1, nbytes, (FILE*) file);
 }
 
-int gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes)
+size_t gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes)
 {
-    if(fwrite(buffer, nbytes, 1, (FILE*) file) != 1) {
-        return -1;
-    }
-    return 1;
+    return fwrite(buffer, 1, nbytes, (FILE*) file);
 }
 
 int gzidx_raw_file_seek(void *file, off_t offset, int whence)
