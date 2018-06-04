@@ -34,10 +34,10 @@ int gzidx_raw_file_error(void *file)
     return ferror((FILE*) file);
 }
 
-ssize_t gzidx_raw_file_length(void *file)
+off_t gzidx_raw_file_length(void *file)
 {
-    size_t length;
-    off_t  saved_pos;
+    off_t length;
+    off_t saved_pos;
 
     saved_pos = gzidx_raw_file_tell(file);
     if(saved_pos < 0) goto fail;
