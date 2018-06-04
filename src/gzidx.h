@@ -91,14 +91,14 @@ int (*gzidx_next_block_callback)(void *context,
 
 int gzidx_index_init(gzidx_index* index, gzidx_gzip_input_stream* gzip_stream);
 int gzidx_index_destroy(gzidx_index* index);
-int gzidx_read(gzidx_index* index, void *buffer, size_t nbytes);
-int gzidx_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
-                        gzidx_next_block_callback next_block_callback);
-int gzidx_seek(gzidx_index* index, off_t offset, int whence);
-int gzidx_seek_advanced(gzidx_index* index, off_t offset, int whence,
-                        gzidx_next_block_callback next_block_callback);
-off_t gzidx_tell(gzidx_index* index);
-int gzidx_rewind(gzidx_index* index);
+int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
+int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
+                             gzidx_next_block_callback next_block_callback);
+int gzidx_gzip_seek(gzidx_index* index, off_t offset, int whence);
+int gzidx_gzip_seek_advanced(gzidx_index* index, off_t offset, int whence,
+                             gzidx_next_block_callback next_block_callback);
+off_t gzidx_gzip_tell(gzidx_index* index);
+int gzidx_gzip_rewind(gzidx_index* index);
 
 int gzidx_build_index(gzidx_index* index, off_t spacing_length);
 int gzidx_build_index_advanced(gzidx_index* index,
