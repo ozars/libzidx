@@ -100,7 +100,7 @@ int gzidx_seek_advanced(gzidx_index* index, off_t offset, int whence,
 off_t gzidx_tell(gzidx_index* index);
 int gzidx_rewind(gzidx_index* index);
 
-int gzidx_build_index(gzidx_index* index, off_t spacing);
+int gzidx_build_index(gzidx_index* index, off_t spacing_length);
 int gzidx_build_index_advanced(gzidx_index* index,
                                gzidx_next_block_callback next_block_callback);
 
