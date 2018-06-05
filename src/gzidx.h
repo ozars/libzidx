@@ -133,6 +133,12 @@ int gzidx_export_advanced(const gzidx_index *index,
                           gzidx_export_filter_callback filter,
                           void *filter_context);
 
+
+int gzidx_import(gzidx_index *index, FILE* input_index_file);
+int gzidx_export(const gzidx_index *index, FILE* output_index_file);
+
+/* raw file callbacks */
+
 size_t gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
 size_t gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
 int gzidx_raw_file_seek(void *file, off_t offset, int whence);
@@ -140,9 +146,6 @@ off_t gzidx_raw_file_tell(void *file);
 int gzidx_raw_file_eof(void *file);
 int gzidx_raw_file_error(void *file);
 off_t gzidx_raw_file_length(void *file);
-
-int gzidx_import(gzidx_index *index, FILE* input_index_file);
-int gzidx_export(const gzidx_index *index, FILE* output_index_file);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -4,6 +4,34 @@
 extern "C" {
 #endif
 
+int gzidx_import(gzidx_index *index, FILE* input_index_file)
+{
+    const gzidx_gzip_index_stream input_stream = {
+        gzidx_raw_file_read,
+        gzidx_raw_file_write,
+        gzidx_raw_file_seek,
+        gzidx_raw_file_tell,
+        gzidx_raw_file_eof,
+        gzidx_raw_file_error,
+        (void*) input_index_file
+    };
+    return gzidx_import_advanced(index, &input_stream, NULL, NULL);
+}
+
+int gzidx_export(const gzidx_index *index, FILE* output_index_file)
+{
+    const gzidx_gzip_index_stream output_stream = {
+        gzidx_raw_file_read,
+        gzidx_raw_file_write,
+        gzidx_raw_file_seek,
+        gzidx_raw_file_tell,
+        gzidx_raw_file_eof,
+        gzidx_raw_file_error,
+        (void*) output_index_file
+    };
+    return gzidx_export_advanced(index, &output_stream, NULL, NULL);
+}
+
 size_t gzidx_raw_file_read(void *file, void *buffer, size_t nbytes)
 {
     return fread(buffer, 1, nbytes, (FILE*) file);
@@ -55,34 +83,6 @@ cleanup:
     if(gzidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
 fail:
     return -1;
-}
-
-int gzidx_import(gzidx_index *index, FILE* input_index_file)
-{
-    const gzidx_gzip_index_stream input_stream = {
-        gzidx_raw_file_read,
-        gzidx_raw_file_write,
-        gzidx_raw_file_seek,
-        gzidx_raw_file_tell,
-        gzidx_raw_file_eof,
-        gzidx_raw_file_error,
-        (void*) input_index_file
-    };
-    return gzidx_import_advanced(index, &input_stream, NULL, NULL);
-}
-
-int gzidx_export(const gzidx_index *index, FILE* output_index_file)
-{
-    const gzidx_gzip_index_stream output_stream = {
-        gzidx_raw_file_read,
-        gzidx_raw_file_write,
-        gzidx_raw_file_seek,
-        gzidx_raw_file_tell,
-        gzidx_raw_file_eof,
-        gzidx_raw_file_error,
-        (void*) output_index_file
-    };
-    return gzidx_export_advanced(index, &output_stream, NULL, NULL);
 }
 
 #ifdef __cplusplus
