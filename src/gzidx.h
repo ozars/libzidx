@@ -8,10 +8,6 @@
 extern "C" {
 #endif
 
-#define GZIDX_WINDOW_SIZE (0x7FFF) // 32767
-
-/* gzidx stream functionality */
-
 typedef
 size_t (*gzidx_stream_read_callback)(void *stream_context, void *buffer,
                                      size_t nbytes);
