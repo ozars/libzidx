@@ -124,7 +124,7 @@ off_t (*gzidx_stream_length_callback)(void *stream_context);
  *
  * Currently only reading is supported.
  */
-typedef struct gzidx_gzip_input_stream_struct
+typedef struct gzidx_gzip_input_stream
 {
     gzidx_stream_read_callback   read;
     gzidx_stream_seek_callback   seek;
@@ -138,7 +138,7 @@ typedef struct gzidx_gzip_input_stream_struct
 /**
  * Layout for a gzip index stream.
  */
-typedef struct gzidx_gzip_index_stream_struct
+typedef struct gzidx_gzip_index_stream
 {
     gzidx_stream_read_callback  read;
     gzidx_stream_write_callback write;
@@ -153,20 +153,20 @@ typedef struct gzidx_gzip_index_stream_struct
 
 /* index/checkpoint data types */
 
-typedef struct gzidx_checkpoint_offset_struct
+typedef struct gzidx_checkpoint_offset
 {
     off_t uncompressed_offset;
     off_t compressed_offset;
     int compressed_offset_bits;
 } gzidx_checkpoint_offset;
 
-typedef struct gzidx_checkpoint_struct
+typedef struct gzidx_checkpoint
 {
     gzidx_checkpoint_offset offset;
     void *preceding_uncompressed_data;
 } gzidx_checkpoint;
 
-typedef struct gzidx_index_struct
+typedef struct gzidx_index
 {
     void *gzip_stream;
     size_t stream_length;
