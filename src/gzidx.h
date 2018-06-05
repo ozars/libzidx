@@ -1,3 +1,7 @@
+/**
+ * \file
+ * libgzidx API header.
+ */
 #ifndef _GZIDX_H_
 #define _GZIDX_H_
 
@@ -8,30 +12,118 @@
 extern "C" {
 #endif
 
+/******************************************************************************
+ * \defgroup streamapi Stream API
+ *
+ * Provide an abstract way to access to underlying resource (file, url etc.)
+ *
+ * @{
+ *****************************************************************************/
+
+/**
+ * Callback type to read from a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ * \param buffer         Buffer to read into.
+ * \param nbytes         Number of bytes to read.
+ *
+ * \return Number of bytes successfully read.
+ * \return Less than \p nbytes on error.
+ */
 typedef
 size_t (*gzidx_stream_read_callback)(void *stream_context, void *buffer,
                                      size_t nbytes);
 
+/**
+ * Callback type to write to a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ * \param buffer         Buffer to write from.
+ * \param nbytes         Number of bytes to write.
+ *
+ * \return Number of bytes successfully written.
+ * \return Less than \p nbytes on error.
+ */
 typedef
 size_t (*gzidx_stream_write_callback)(void *stream_context, const void *buffer,
                                       size_t nbytes);
 
+/**
+ * Callback type to seek to an offset in a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ * \param offset         Number of bytes relative to the \p whence.
+ * \param whence         Position used as reference for the \p offset.
+ *
+ * \return Non-negative value on success.
+ * \return Negative value on error.
+ */
 typedef
 int (*gzidx_stream_seek_callback)(void *stream_context, off_t offset,
                                   int whence);
 
+/**
+ * Callback type to get current offset in a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ *
+ * \return Current offset in the stream.
+ * \return Negative value on error.
+ */
 typedef
 off_t (*gzidx_stream_tell_callback)(void *stream_context);
 
+/**
+ * Callback type to check if end-of-file is reached in a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ *
+ * \return Current offset in the stream.
+ * \return Positive value if end-of-file is reached.
+ * \return Zero if end-of-file is not reached.
+ * \return Negative value on error.
+ */
 typedef
 int (*gzidx_stream_eof_callback)(void *stream_context);
 
+/**
+ * Callback type to check if any errors happened while reading from/writing to
+ * a stream.
+ *
+ * This function will be used to check and return specific error in case of
+ * gzidx_stream_read_callback() or gzidx_stream_write_callback() fail to read
+ * or write some part of data. Note that this method is not used for checking
+ * errors for stream API calls which can return negative value themselves to
+ * indicate errors.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ *
+ * \return Negative value on error.
+ */
 typedef
 int (*gzidx_stream_error_callback)(void *stream_context);
 
+/**
+ * Callback type to get length of a stream.
+ *
+ * \param stream_context Pointer to user-defined stream data.
+ *
+ * \return Length of the stream.
+ * \return Negative value on error:
+ *         - `-1` is reserved for the case where the stream is continuous.
+ *         **Not implemented yet.**
+ *
+ * \todo Implement continuous streams. Either remove dependency to this
+ *       function, or make it optional.
+ */
 typedef
 off_t (*gzidx_stream_length_callback)(void *stream_context);
 
+/**
+ * Layout for a gzip input stream.
+ *
+ * Currently only reading is supported.
+ */
 typedef struct gzidx_gzip_input_stream_struct
 {
     gzidx_stream_read_callback   read;
@@ -43,6 +135,9 @@ typedef struct gzidx_gzip_input_stream_struct
     void *context;
 } gzidx_gzip_input_stream;
 
+/**
+ * Layout for a gzip index stream.
+ */
 typedef struct gzidx_gzip_index_stream_struct
 {
     gzidx_stream_read_callback  read;
@@ -53,6 +148,8 @@ typedef struct gzidx_gzip_index_stream_struct
     gzidx_stream_error_callback error;
     void *context;
 } gzidx_gzip_index_stream;
+
+/** @} */ // end of streamapi
 
 /* index/checkpoint data types */
 
