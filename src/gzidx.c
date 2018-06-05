@@ -68,7 +68,7 @@ int gzidx_import(gzidx_index *index, FILE* input_index_file)
         gzidx_raw_file_error,
         (void*) input_index_file
     };
-    return gzidx_import_advanced(index, &input_stream, NULL);
+    return gzidx_import_advanced(index, &input_stream, NULL, NULL);
 }
 
 int gzidx_export(const gzidx_index *index, FILE* output_index_file)
@@ -82,7 +82,7 @@ int gzidx_export(const gzidx_index *index, FILE* output_index_file)
         gzidx_raw_file_error,
         (void*) output_index_file
     };
-    return gzidx_export_advanced(index, &output_stream, NULL);
+    return gzidx_export_advanced(index, &output_stream, NULL, NULL);
 }
 
 #ifdef __cplusplus
