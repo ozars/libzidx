@@ -1,4 +1,5 @@
 bin/
+doc/
 
 # VIM files
 *.swp
