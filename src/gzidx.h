@@ -109,8 +109,8 @@ int gzidx_build_index_advanced(gzidx_index* index,
 int gzidx_save_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
 int gzidx_get_offset_checkpoint_index(gzidx_index* index, off_t offset);
 
-void gzidx_extend_index(gzidx_index* index, size_t nmembers);
-void gzidx_shrink_index(gzidx_index* index);
+void gzidx_extend_index_size(gzidx_index* index, size_t nmembers);
+void gzidx_shrink_index_size(gzidx_index* index);
 
 /* index import/export functions */
 
@@ -124,11 +124,13 @@ int (*gzidx_export_filter_callback)(void *export_context,
 
 int gzidx_import_advanced(gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
-                          gzidx_import_filter_callback filter);
+                          gzidx_import_filter_callback filter,
+                          void *filter_context);
 
 int gzidx_export_advanced(const gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
-                          gzidx_import_filter_callback filter);
+                          gzidx_export_filter_callback filter,
+                          void *filter_context);
 
 size_t gzidx_raw_file_read(void *file, void *buffer, size_t nbytes);
 size_t gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
