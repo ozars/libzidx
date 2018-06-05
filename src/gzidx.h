@@ -104,7 +104,8 @@ int gzidx_gzip_rewind(gzidx_index* index);
 
 int gzidx_build_index(gzidx_index* index, off_t spacing_length);
 int gzidx_build_index_advanced(gzidx_index* index,
-                               gzidx_next_block_callback next_block_callback);
+                               gzidx_next_block_callback next_block_callback,
+                               void *next_block_callback_context);
 
 int gzidx_save_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
 int gzidx_get_offset_checkpoint_index(gzidx_index* index, off_t offset);
