@@ -210,11 +210,13 @@ void gzidx_shrink_index_size(gzidx_index* index);
 
 typedef
 int (*gzidx_import_filter_callback)(void *import_context,
+                                    gzidx_index *index,
                                     gzidx_checkpoint_offset *offset);
 
 typedef
 int (*gzidx_export_filter_callback)(void *export_context,
-                                    gzidx_checkpoint_offset *offset);
+                                    gzidx_index *index,
+                                    gzidx_checkpoint *offset);
 
 int gzidx_import_advanced(gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
