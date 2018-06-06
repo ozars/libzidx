@@ -179,7 +179,7 @@ typedef struct gzidx_index
     size_t stream_length;
     gzidx_checkpoint current_checkpoint;
     int list_count;
-    int list_size;
+    int list_capacity;
     gzidx_checkpoint *list;
 } gzidx_index;
 
