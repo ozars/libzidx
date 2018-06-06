@@ -8,8 +8,6 @@
 #include <stdio.h>     // FILE
 #include <sys/types.h> // off_t, size_t, ssize_t
 
-#define GZIDX_WINDOW_SIZE (0x8000)
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -189,7 +187,8 @@ typedef
 int (*gzidx_next_block_callback)(void *context,
                                  gzidx_checkpoint *current_checkpoint);
 
-int gzidx_index_init(gzidx_index* index, gzidx_gzip_input_stream* gzip_stream);
+int gzidx_index_init(gzidx_index* index, gzidx_gzip_input_stream* gzip_stream,
+                     int window_size);
 int gzidx_index_destroy(gzidx_index* index);
 int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
 int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
