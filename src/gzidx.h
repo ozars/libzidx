@@ -238,14 +238,14 @@ int gzidx_import_advanced(gzidx_index *index,
                           gzidx_import_filter_callback filter,
                           void *filter_context);
 
-int gzidx_export_advanced(const gzidx_index *index,
+int gzidx_export_advanced(gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
                           gzidx_export_filter_callback filter,
                           void *filter_context);
 
 
 int gzidx_import(gzidx_index *index, FILE* input_index_file);
-int gzidx_export(const gzidx_index *index, FILE* output_index_file);
+int gzidx_export(gzidx_index *index, FILE* output_index_file);
 
 /* raw file callbacks */
 
