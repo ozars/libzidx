@@ -44,6 +44,15 @@ size_t gzidx_raw_file_write(void *file, const void *buffer, size_t nbytes)
 
 int gzidx_raw_file_seek(void *file, off_t offset, int whence)
 {
+    switch(whence)
+    {
+        case GZIDX_SEEK_SET:
+            return fseek((FILE*) file, offset, SEEK_SET);
+        case GZIDX_SEEK_CUR:
+            return fseek((FILE*) file, offset, SEEK_CUR);
+        case GZIDX_SEEK_END:
+            return fseek((FILE*) file, offset, SEEK_END);
+    }
     return fseek((FILE*) file, offset, whence);
 }
 

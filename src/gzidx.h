@@ -20,6 +20,10 @@ extern "C" {
  * @{
  *****************************************************************************/
 
+#define GZIDX_SEEK_SET (0)
+#define GZIDX_SEEK_CUR (1)
+#define GZIDX_SEEK_END (2)
+
 /**
  * Callback type to read from a stream.
  *
