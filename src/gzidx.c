@@ -4,6 +4,17 @@
 extern "C" {
 #endif
 
+
+int gzidx_import_advanced(gzidx_index *index,
+                          const gzidx_gzip_index_stream *stream,
+                          gzidx_import_filter_callback filter,
+                          void *filter_context) { return 0; }
+
+int gzidx_export_advanced(const gzidx_index *index,
+                          const gzidx_gzip_index_stream *stream,
+                          gzidx_export_filter_callback filter,
+                          void *filter_context) { return 0; }
+
 int gzidx_import(gzidx_index *index, FILE* input_index_file)
 {
     const gzidx_gzip_index_stream input_stream = {
