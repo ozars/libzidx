@@ -1,10 +1,93 @@
 #include "gzidx.h"
 
+#include <stdlib.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+int gzidx_index_init(gzidx_index* index,
+                     gzidx_gzip_input_stream* gzip_input_stream)
+{
+    return gzidx_index_init_advanced(index, gzip_input_stream, NULL, 8);
+}
 
+int gzidx_index_init_advanced(gzidx_index* index,
+                              gzidx_gzip_input_stream* gzip_input_stream,
+                              z_stream* z_stream_ptr,
+                              int initial_capacity)
+{
+    if (!z_stream_ptr) {
+        z_stream_ptr = (z_stream*) malloc(sizeof(z_stream));
+
+        if (!z_stream_ptr) goto memory;
+
+        z_stream_ptr->zalloc   = Z_NULL;
+        z_stream_ptr->zfree    = Z_NULL;
+        z_stream_ptr->opaque   = Z_NULL;
+    }
+    z_stream_ptr->avail_in = 0;
+    z_stream_ptr->next_in  = Z_NULL;
+
+    index->gzip_input_stream = gzip_input_stream;
+    index->z_stream      = z_stream_ptr;
+    index->list_count    = 0;
+    index->list_capacity = initial_capacity;
+    index->list          = (gzidx_checkpoint*) malloc(sizeof(gzidx_checkpoint)
+                                                          * initial_capacity);
+    if (!index->list) goto cleanup;
+
+    index->current_checkpoint = NULL;
+
+    return 0;
+cleanup:
+    free(z_stream_ptr);
+    free(index->list);
+memory:
+/* fail: */
+    return -1;
+}
+
+int gzidx_index_destroy(gzidx_index* index)
+{
+    gzidx_checkpoint *it;
+    gzidx_checkpoint *end = index->list + index->list_count;
+
+    if(!index) return 0;
+
+    free(index->z_stream);
+
+    for (it = index->list; it < end; it++) {
+        free(it->window_data);
+    }
+    free(index->list);
+
+    return 0;
+}
+
+int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
+int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
+                             gzidx_next_block_callback next_block_callback,
+                             void *next_block_callback_context);
+int gzidx_gzip_seek(gzidx_index* index, off_t offset, int whence);
+int gzidx_gzip_seek_advanced(gzidx_index* index, off_t offset, int whence,
+                             gzidx_next_block_callback next_block_callback,
+                             void *next_block_callback_context);
+off_t gzidx_gzip_tell(gzidx_index* index);
+int gzidx_gzip_rewind(gzidx_index* index);
+
+int gzidx_build_index(gzidx_index* index, off_t spacing_length);
+int gzidx_build_index_advanced(gzidx_index* index,
+                               gzidx_next_block_callback next_block_callback,
+                               void *next_block_callback_context);
+
+int gzidx_add_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
+int gzidx_get_checkpoint(gzidx_index* index, off_t offset);
+
+void gzidx_extend_index_size(gzidx_index* index, size_t nmembers);
+void gzidx_shrink_index_size(gzidx_index* index);
+
+/* TODO: Implement these. */
 int gzidx_import_advanced(gzidx_index *index,
                           const gzidx_gzip_index_stream *stream,
                           gzidx_import_filter_callback filter,
