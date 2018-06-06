@@ -7,6 +7,7 @@
 
 #include <stdio.h>     // FILE
 #include <sys/types.h> // off_t, size_t, ssize_t
+#include <zlib.h>
 
 #define GZIDX_WINDOW_SIZE (0x8000)
 
@@ -192,6 +193,10 @@ int (*gzidx_next_block_callback)(void *context,
 
 int gzidx_index_init(gzidx_index* index,
                      gzidx_gzip_input_stream* gzip_input_stream);
+int gzidx_index_init_advanced(gzidx_index* index,
+                              gzidx_gzip_input_stream* gzip_input_stream,
+                              z_stream* z_stream_ptr,
+                              int initial_capacity);
 int gzidx_index_destroy(gzidx_index* index);
 int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
 int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
