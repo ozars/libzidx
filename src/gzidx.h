@@ -189,6 +189,7 @@ typedef struct gzidx_index
 
 typedef
 int (*gzidx_next_block_callback)(void *context,
+                                 gzidx_index *index,
                                  gzidx_checkpoint *current_checkpoint);
 
 int gzidx_index_init(gzidx_index* index,
