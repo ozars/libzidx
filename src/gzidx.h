@@ -171,18 +171,18 @@ typedef struct gzidx_checkpoint_offset
 typedef struct gzidx_checkpoint
 {
     gzidx_checkpoint_offset offset;
-    void *preceding_uncompressed_data;
+    unsigned char *window_data;
 } gzidx_checkpoint;
 
 typedef struct gzidx_index
 {
     gzidx_gzip_input_stream *gzip_input_stream;
-    void* z_stream;
+    z_stream* z_stream;
     size_t stream_length;
-    gzidx_checkpoint current_checkpoint;
     int list_count;
     int list_capacity;
     gzidx_checkpoint *list;
+    gzidx_checkpoint *current_checkpoint;
 } gzidx_index;
 
 /* read/write/seek/index functions */
