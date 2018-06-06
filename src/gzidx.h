@@ -175,7 +175,8 @@ typedef struct gzidx_checkpoint
 
 typedef struct gzidx_index
 {
-    void *gzip_input_stream;
+    gzidx_gzip_input_stream *gzip_input_stream;
+    void* z_stream;
     size_t stream_length;
     gzidx_checkpoint current_checkpoint;
     int list_count;
