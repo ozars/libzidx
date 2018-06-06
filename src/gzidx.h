@@ -209,8 +209,8 @@ int gzidx_build_index_advanced(gzidx_index* index,
                                gzidx_next_block_callback next_block_callback,
                                void *next_block_callback_context);
 
-int gzidx_save_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
-int gzidx_get_offset_checkpoint_index(gzidx_index* index, off_t offset);
+int gzidx_add_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
+int gzidx_get_checkpoint(gzidx_index* index, off_t offset);
 
 void gzidx_extend_index_size(gzidx_index* index, size_t nmembers);
 void gzidx_shrink_index_size(gzidx_index* index);
