@@ -15,7 +15,8 @@ extern "C" {
 /******************************************************************************
  * \defgroup streamapi Stream API
  *
- * Provide an abstract way to access to underlying resource (file, url etc.)
+ * Provide an abstract way to access to underlying resource stream (file, url
+ * etc.)
  *
  * @{
  *****************************************************************************/
@@ -59,7 +60,7 @@ size_t (*gzidx_stream_write_callback)(void *stream_context, const void *buffer,
  * \param offset         Number of bytes relative to the \p whence.
  * \param whence         Position used as reference for the \p offset.
  *
- * \return Non-negative value on success.
+ * \return Nonnegative value on success.
  * \return Negative value on error.
  */
 typedef
@@ -82,7 +83,6 @@ off_t (*gzidx_stream_tell_callback)(void *stream_context);
  *
  * \param stream_context Pointer to user-defined stream data.
  *
- * \return Current offset in the stream.
  * \return Positive value if end-of-file is reached.
  * \return Zero if end-of-file is not reached.
  * \return Negative value on error.
@@ -102,7 +102,8 @@ int (*gzidx_stream_eof_callback)(void *stream_context);
  *
  * \param stream_context Pointer to user-defined stream data.
  *
- * \return Negative value on error.
+ * \return Nonzero value if there had been an error in previous read/write
+ *         call.
  */
 typedef
 int (*gzidx_stream_error_callback)(void *stream_context);
