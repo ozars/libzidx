@@ -175,7 +175,7 @@ typedef struct gzidx_checkpoint
 
 typedef struct gzidx_index
 {
-    void *gzip_stream;
+    void *gzip_input_stream;
     size_t stream_length;
     gzidx_checkpoint current_checkpoint;
     int list_count;
@@ -189,7 +189,8 @@ typedef
 int (*gzidx_next_block_callback)(void *context,
                                  gzidx_checkpoint *current_checkpoint);
 
-int gzidx_index_init(gzidx_index* index, gzidx_gzip_input_stream* gzip_stream);
+int gzidx_index_init(gzidx_index* index,
+                     gzidx_gzip_input_stream* gzip_input_stream);
 int gzidx_index_destroy(gzidx_index* index);
 int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
 int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
