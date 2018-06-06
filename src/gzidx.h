@@ -8,6 +8,8 @@
 #include <stdio.h>     // FILE
 #include <sys/types.h> // off_t, size_t, ssize_t
 
+#define GZIDX_WINDOW_SIZE (0x8000)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
