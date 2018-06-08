@@ -17,14 +17,14 @@
 extern "C" {
 #endif
 
-/******************************************************************************
+/*******************************************************************************
  * \defgroup streamapi Stream API
  *
  * Provide an abstract way to access to underlying resource stream (file, url
  * etc.)
  *
  * @{
- *****************************************************************************/
+ ******************************************************************************/
 
 #define GZIDX_SEEK_SET (0)
 #define GZIDX_SEEK_CUR (1)
@@ -96,19 +96,18 @@ typedef
 int (*gzidx_stream_eof_callback)(void *stream_context);
 
 /**
- * Callback type to check if any errors happened while reading from/writing to
- * a stream.
+ * Callback type to check if any errors happened while reading from/writing to a
+ * stream.
  *
  * This function will be used to check and return specific error in case of
- * gzidx_stream_read_callback() or gzidx_stream_write_callback() fail to read
- * or write some part of data. Note that this method is not used for checking
+ * gzidx_stream_read_callback() or gzidx_stream_write_callback() fail to read or
+ * write some part of data. Note that this method is not used for checking
  * errors for stream API calls which can return negative value themselves to
  * indicate errors.
  *
  * \param stream_context Pointer to user-defined stream data.
  *
- * \return Nonzero value if there had been an error in previous read/write
- *         call.
+ * \return Nonzero value if there had been an error in previous read/write call.
  */
 typedef
 int (*gzidx_stream_error_callback)(void *stream_context);
