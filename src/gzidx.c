@@ -20,10 +20,15 @@ int gzidx_index_init_advanced(gzidx_index* index,
                               z_stream* z_stream_ptr, int initial_capacity,
                               int window_size, int compressed_data_buffer_size)
 {
+    /* assert(index != NULL); */
+    /* assert(gzip_input_stream != NULL); */
+    index->list = NULL;
+    index->compressed_data_buffer = NULL;
+
     if (!z_stream_ptr) {
         z_stream_ptr = (z_stream*) malloc(sizeof(z_stream));
 
-        if (!z_stream_ptr) goto memory;
+        if (!z_stream_ptr) goto memory_fail;
 
         z_stream_ptr->zalloc   = Z_NULL;
         z_stream_ptr->zfree    = Z_NULL;
@@ -32,21 +37,29 @@ int gzidx_index_init_advanced(gzidx_index* index,
     z_stream_ptr->avail_in = 0;
     z_stream_ptr->next_in  = Z_NULL;
 
-    index->gzip_input_stream = gzip_input_stream;
-    index->z_stream      = z_stream_ptr;
+    index->list = (gzidx_checkpoint*) malloc(sizeof(gzidx_checkpoint)
+                                                 * initial_capacity);
+    if (!index->list) goto memory_fail;
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
-    index->list          = (gzidx_checkpoint*) malloc(sizeof(gzidx_checkpoint)
-                                                          * initial_capacity);
-    if (!index->list) goto cleanup;
 
-    index->current_checkpoint = NULL;
+    index->compressed_data_buffer = (unsigned char*)
+                                        malloc(compressed_data_buffer_size);
+    if (!index->compressed_data_buffer) goto memory_fail;
+
+    index->window_size                 = window_size;
+    index->compressed_data_buffer_size = compressed_data_buffer_size;
+
+    index->gzip_input_stream = gzip_input_stream;
+    index->z_stream          = z_stream_ptr;
+    index->stream_state      = GZIDX_STATE_FILE_HEADERS;
+
 
     return 0;
-cleanup:
+memory_fail:
     free(z_stream_ptr);
     free(index->list);
-memory:
+    free(index->compressed_data_buffer);
 /* fail: */
     return -1;
 }
@@ -56,7 +69,7 @@ int gzidx_index_destroy(gzidx_index* index)
     gzidx_checkpoint *it;
     gzidx_checkpoint *end = index->list + index->list_count;
 
-    if(!index) return 0;
+    if (!index) return 0;
 
     free(index->z_stream);
 
