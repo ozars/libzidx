@@ -9,7 +9,9 @@
 #include <sys/types.h> // off_t, size_t, ssize_t
 #include <zlib.h>
 
-#define GZIDX_WINDOW_SIZE (0x8000)
+#define GZIDX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
+#define GZIDX_DEFAULT_WINDOW_SIZE                 (32768)
+#define GZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
 
 #ifdef __cplusplus
 extern "C" {
@@ -174,15 +176,23 @@ typedef struct gzidx_checkpoint
     unsigned char *window_data;
 } gzidx_checkpoint;
 
+typedef enum gzidx_stream_state
+{
+    GZIDX_STATE_FILE_HEADERS = 1,
+    GZIDX_STATE_DEFLATE_BLOCKS = 2
+} gzidx_stream_state;
+
 typedef struct gzidx_index
 {
     gzidx_gzip_input_stream *gzip_input_stream;
     z_stream* z_stream;
-    size_t stream_length;
+    gzidx_stream_state stream_state;
     int list_count;
     int list_capacity;
     gzidx_checkpoint *list;
-    gzidx_checkpoint *current_checkpoint;
+    unsigned char *compressed_data_buffer;
+    int compressed_data_buffer_size;
+    int window_size;
 } gzidx_index;
 
 /* read/write/seek/index functions */
@@ -196,8 +206,8 @@ int gzidx_index_init(gzidx_index* index,
                      gzidx_gzip_input_stream* gzip_input_stream);
 int gzidx_index_init_advanced(gzidx_index* index,
                               gzidx_gzip_input_stream* gzip_input_stream,
-                              z_stream* z_stream_ptr,
-                              int initial_capacity);
+                              z_stream* z_stream_ptr, int initial_capacity,
+                              int window_size, int compressed_data_buffer_size);
 int gzidx_index_destroy(gzidx_index* index);
 int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
 int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
