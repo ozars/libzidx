@@ -198,9 +198,9 @@ typedef struct gzidx_index
 /* read/write/seek/index functions */
 
 typedef
-int (*gzidx_next_block_callback)(void *context,
-                                 gzidx_index *index,
-                                 gzidx_checkpoint *current_checkpoint);
+int (*gzidx_block_callback)(void *context,
+                            gzidx_index *index,
+                            gzidx_checkpoint *current_checkpoint);
 
 int gzidx_index_init(gzidx_index* index,
                      gzidx_gzip_input_stream* gzip_input_stream);
@@ -211,19 +211,19 @@ int gzidx_index_init_advanced(gzidx_index* index,
 int gzidx_index_destroy(gzidx_index* index);
 int gzidx_gzip_read(gzidx_index* index, void *buffer, size_t nbytes);
 int gzidx_gzip_read_advanced(gzidx_index* index, void *buffer, size_t nbytes,
-                             gzidx_next_block_callback next_block_callback,
-                             void *next_block_callback_context);
+                             gzidx_block_callback block_callback,
+                             void *callback_context);
 int gzidx_gzip_seek(gzidx_index* index, off_t offset, int whence);
 int gzidx_gzip_seek_advanced(gzidx_index* index, off_t offset, int whence,
-                             gzidx_next_block_callback next_block_callback,
-                             void *next_block_callback_context);
+                             gzidx_block_callback block_callback,
+                             void *callback_context);
 off_t gzidx_gzip_tell(gzidx_index* index);
 int gzidx_gzip_rewind(gzidx_index* index);
 
 int gzidx_build_index(gzidx_index* index, off_t spacing_length);
 int gzidx_build_index_advanced(gzidx_index* index,
-                               gzidx_next_block_callback next_block_callback,
-                               void *next_block_callback_context);
+                               gzidx_block_callback block_callback,
+                               void *callback_context);
 
 int gzidx_add_checkpoint(gzidx_index* index, gzidx_checkpoint* checkpoint);
 int gzidx_get_checkpoint(gzidx_index* index, off_t offset);
