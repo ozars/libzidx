@@ -7,21 +7,21 @@ extern "C" {
 #endif
 
 int gzidx_index_init(gzidx_index* index,
-                     gzidx_gzip_input_stream* gzip_input_stream)
+                     gzidx_compressed_stream* compressed_stream)
 {
-    return gzidx_index_init_advanced(index, gzip_input_stream, NULL,
+    return gzidx_index_init_advanced(index, compressed_stream, NULL,
                                      GZIDX_DEFAULT_INITIAL_LIST_CAPACITY,
                                      GZIDX_DEFAULT_WINDOW_SIZE,
                                      GZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE);
 }
 
 int gzidx_index_init_advanced(gzidx_index* index,
-                              gzidx_gzip_input_stream* gzip_input_stream,
+                              gzidx_compressed_stream* compressed_stream,
                               z_stream* z_stream_ptr, int initial_capacity,
                               int window_size, int compressed_data_buffer_size)
 {
     /* assert(index != NULL); */
-    /* assert(gzip_input_stream != NULL); */
+    /* assert(compressed_stream != NULL); */
     index->list = NULL;
     index->compressed_data_buffer = NULL;
 
@@ -50,7 +50,7 @@ int gzidx_index_init_advanced(gzidx_index* index,
     index->window_size                 = window_size;
     index->compressed_data_buffer_size = compressed_data_buffer_size;
 
-    index->gzip_input_stream = gzip_input_stream;
+    index->compressed_stream = compressed_stream;
     index->z_stream          = z_stream_ptr;
     index->stream_state      = GZIDX_STATE_FILE_HEADERS;
 

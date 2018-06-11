@@ -133,7 +133,7 @@ off_t (*gzidx_stream_length_callback)(void *stream_context);
  *
  * Currently only reading is supported.
  */
-typedef struct gzidx_gzip_input_stream
+typedef struct gzidx_compressed_stream
 {
     gzidx_stream_read_callback   read;
     gzidx_stream_seek_callback   seek;
@@ -142,7 +142,7 @@ typedef struct gzidx_gzip_input_stream
     gzidx_stream_error_callback  error;
     gzidx_stream_length_callback length;
     void *context;
-} gzidx_gzip_input_stream;
+} gzidx_compressed_stream;
 
 /**
  * Layout for a gzip index stream.
@@ -183,7 +183,7 @@ typedef enum gzidx_stream_state
 
 typedef struct gzidx_index
 {
-    gzidx_gzip_input_stream *gzip_input_stream;
+    gzidx_compressed_stream *compressed_stream;
     z_stream* z_stream;
     gzidx_stream_state stream_state;
     int list_count;
@@ -202,9 +202,9 @@ int (*gzidx_block_callback)(void *context,
                             gzidx_checkpoint *current_checkpoint);
 
 int gzidx_index_init(gzidx_index* index,
-                     gzidx_gzip_input_stream* gzip_input_stream);
+                     gzidx_compressed_stream* compressed_stream);
 int gzidx_index_init_advanced(gzidx_index* index,
-                              gzidx_gzip_input_stream* gzip_input_stream,
+                              gzidx_compressed_stream* compressed_stream,
                               z_stream* z_stream_ptr, int initial_capacity,
                               int window_size, int compressed_data_buffer_size);
 int gzidx_index_destroy(gzidx_index* index);
