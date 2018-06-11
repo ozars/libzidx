@@ -177,15 +177,24 @@ typedef struct gzidx_checkpoint
 
 typedef enum gzidx_stream_state
 {
-    GZIDX_STATE_FILE_HEADERS = 1,
-    GZIDX_STATE_DEFLATE_BLOCKS = 2
+    GZIDX_EXPECT_FILE_HEADERS = 1,
+    GZIDX_EXPECT_DEFLATE_BLOCKS = 2
 } gzidx_stream_state;
+
+typedef enum gzidx_stream_type
+{
+    GZIDX_STREAM_DEFLATE,
+    GZIDX_STREAM_GZIP_OR_ZLIB,
+    GZIDX_STREAM_GZIP,
+    GZIDX_STREAM_ZLIB
+} gzidx_stream_type;
 
 typedef struct gzidx_index
 {
     gzidx_compressed_stream *compressed_stream;
-    z_stream* z_stream;
     gzidx_stream_state stream_state;
+    gzidx_stream_type stream_type;
+    z_stream* z_stream;
     int list_count;
     int list_capacity;
     gzidx_checkpoint *list;
@@ -205,6 +214,7 @@ int gzidx_index_init(gzidx_index* index,
                      gzidx_compressed_stream* compressed_stream);
 int gzidx_index_init_advanced(gzidx_index* index,
                               gzidx_compressed_stream* compressed_stream,
+                              gzidx_stream_type stream_type,
                               z_stream* z_stream_ptr, int initial_capacity,
                               int window_size, int compressed_data_buffer_size);
 int gzidx_index_destroy(gzidx_index* index);

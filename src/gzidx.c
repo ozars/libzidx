@@ -9,7 +9,8 @@ extern "C" {
 int gzidx_index_init(gzidx_index* index,
                      gzidx_compressed_stream* compressed_stream)
 {
-    return gzidx_index_init_advanced(index, compressed_stream, NULL,
+    return gzidx_index_init_advanced(index, compressed_stream,
+                                     GZIDX_STREAM_GZIP_OR_ZLIB, NULL,
                                      GZIDX_DEFAULT_INITIAL_LIST_CAPACITY,
                                      GZIDX_DEFAULT_WINDOW_SIZE,
                                      GZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE);
@@ -17,11 +18,13 @@ int gzidx_index_init(gzidx_index* index,
 
 int gzidx_index_init_advanced(gzidx_index* index,
                               gzidx_compressed_stream* compressed_stream,
+                              gzidx_stream_type stream_type,
                               z_stream* z_stream_ptr, int initial_capacity,
                               int window_size, int compressed_data_buffer_size)
 {
     /* assert(index != NULL); */
     /* assert(compressed_stream != NULL); */
+    /* assert stream_type is valid. */
     index->list = NULL;
     index->compressed_data_buffer = NULL;
 
@@ -52,8 +55,13 @@ int gzidx_index_init_advanced(gzidx_index* index,
 
     index->compressed_stream = compressed_stream;
     index->z_stream          = z_stream_ptr;
-    index->stream_state      = GZIDX_STATE_FILE_HEADERS;
+    index->stream_type       = stream_type;
 
+    if (index->stream_type == GZIDX_STREAM_DEFLATE) {
+        index->stream_state = GZIDX_EXPECT_DEFLATE_BLOCKS;
+    } else {
+        index->stream_state = GZIDX_EXPECT_FILE_HEADERS;
+    }
 
     return 0;
 memory_fail:
