@@ -1,3 +1,3 @@
-# libgzidx
+# libzidx
 
 
