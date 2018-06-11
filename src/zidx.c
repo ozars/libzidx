@@ -10,7 +10,8 @@ int zidx_index_init(zidx_index* index,
                      zidx_compressed_stream* compressed_stream)
 {
     return zidx_index_init_advanced(index, compressed_stream,
-                                    ZIDX_STREAM_GZIP_OR_ZLIB, NULL,
+                                    ZIDX_STREAM_GZIP_OR_ZLIB,
+                                    ZIDX_CHECKSUM_DEFAULT, NULL,
                                     ZIDX_DEFAULT_INITIAL_LIST_CAPACITY,
                                     ZIDX_DEFAULT_WINDOW_SIZE,
                                     ZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE);
@@ -19,12 +20,14 @@ int zidx_index_init(zidx_index* index,
 int zidx_index_init_advanced(zidx_index* index,
                              zidx_compressed_stream* compressed_stream,
                              zidx_stream_type stream_type,
+                             zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
                              int window_size, int compressed_data_buffer_size)
 {
     /* assert(index != NULL); */
     /* assert(compressed_stream != NULL); */
     /* assert stream_type is valid. */
+    /* assert checksum_option is valid. */
     index->list = NULL;
     index->compressed_data_buffer = NULL;
 
@@ -62,6 +65,8 @@ int zidx_index_init_advanced(zidx_index* index,
     } else {
         index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
     }
+
+    index->checksum_option = checksum_option;
 
     return 0;
 memory_fail:

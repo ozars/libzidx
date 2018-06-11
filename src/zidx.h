@@ -189,6 +189,14 @@ typedef enum zidx_stream_type
     ZIDX_STREAM_ZLIB
 } zidx_stream_type;
 
+typedef enum zidx_checksum_option
+{
+    ZIDX_CHECKSUM_DISABLED,
+    ZIDX_CHECKSUM_DEFAULT,
+    ZIDX_CHECKSUM_FORCE_CRC32,
+    ZIDX_CHECKSUM_FORCE_ADLER32
+} zidx_checksum_option;
+
 typedef struct zidx_index
 {
     zidx_compressed_stream *compressed_stream;
@@ -198,6 +206,7 @@ typedef struct zidx_index
     int list_count;
     int list_capacity;
     zidx_checkpoint *list;
+    zidx_checksum_option checksum_option;
     unsigned char *compressed_data_buffer;
     int compressed_data_buffer_size;
     int window_size;
@@ -215,6 +224,7 @@ int zidx_index_init(zidx_index* index,
 int zidx_index_init_advanced(zidx_index* index,
                              zidx_compressed_stream* compressed_stream,
                              zidx_stream_type stream_type,
+                             zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
                              int window_size, int compressed_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
