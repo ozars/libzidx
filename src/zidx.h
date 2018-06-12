@@ -184,9 +184,8 @@ typedef enum zidx_stream_state
 typedef enum zidx_stream_type
 {
     ZIDX_STREAM_DEFLATE,
-    ZIDX_STREAM_GZIP_OR_ZLIB,
     ZIDX_STREAM_GZIP,
-    ZIDX_STREAM_ZLIB
+    ZIDX_STREAM_GZIP_OR_ZLIB
 } zidx_stream_type;
 
 typedef enum zidx_checksum_option

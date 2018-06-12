@@ -59,14 +59,8 @@ int zidx_index_init_advanced(zidx_index* index,
     index->compressed_stream = compressed_stream;
     index->z_stream          = z_stream_ptr;
     index->stream_type       = stream_type;
-
-    if (index->stream_type == ZIDX_STREAM_DEFLATE) {
-        index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
-    } else {
-        index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
-    }
-
-    index->checksum_option = checksum_option;
+    index->stream_state      = ZIDX_EXPECT_FILE_HEADERS;
+    index->checksum_option   = checksum_option;
 
     return 0;
 memory_fail:
@@ -98,6 +92,139 @@ int zidx_gzip_read(zidx_index* index, void *buffer, size_t nbytes);
 int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
                             zidx_block_callback block_callback,
                             void *callback_context);
+
+int zidx_gzip_read(zidx_index* index, void *buffer, size_t nbytes)
+{
+    return zidx_gzip_read_advanced(index, buffer, nbytes, NULL, NULL);
+}
+
+int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
+                            zidx_block_callback block_callback,
+                            void *callback_context)
+{
+    /* TODO: Implement Z_SYNC_FLUSH option. */
+    /* TODO: Implement decompression of existing compressed data after read
+     * callback returns with less number of bytes read. */
+    /* TODO: Check return values of read calls better in case they return
+     * shorter then expected buffer length.  */
+    /* TODO: Implement support for concatanated gzip streams. */
+    /* TODO: Implement window bits to reflect reality (window size). */
+    /* TODO: Convert buffer type to unsigned char* */
+
+    int z_ret;      /* Return value for zlib calls. */
+    int s_ret;      /* Return value for stream calls. */
+    int s_read_len; /* Return value for stream read calls. */
+
+    int read_completed;
+
+    /* Aliases for frequently used elements. */
+    zidx_compressed_stream *stream = index->compressed_stream;
+    unsigned char *cmp_buf         = index->compressed_data_buffer;
+    int cmp_buf_len                = index->compressed_data_buffer_size;
+    z_stream *zs                   = index->z_stream;
+
+
+    switch (index->stream_state) {
+        /* If headers are expected */
+        case ZIDX_EXPECT_FILE_HEADERS:
+            switch(index->stream_type) {
+                case ZIDX_STREAM_DEFLATE:
+                    /* Inflate initialization will be made later for all types.
+                     * */
+                    break;
+                case ZIDX_STREAM_GZIP:
+                    z_ret = inflateInit2(zs, 16 + MAX_WBITS);
+                    if (z_ret != Z_OK) return -1;
+                    goto read_headers;
+                case ZIDX_STREAM_GZIP_OR_ZLIB:
+                    z_ret = inflateInit2(zs, 32 + MAX_WBITS);
+                    if (z_ret != Z_OK) return -1;
+                    goto read_headers;
+                read_headers:
+                    read_completed = 0;
+                    zs->next_out  = (unsigned char*) buffer;
+                    zs->avail_out = 0;
+                    do {
+                        s_ret = stream->read(stream->context, cmp_buf, cmp_buf_len);
+                        if (stream->error(stream->context)) return -2;
+                        if (s_ret == 0) return -3;
+
+                        zs->next_in   = cmp_buf;
+                        zs->avail_in  = s_ret;
+
+                        z_ret = inflate(zs, Z_BLOCK);
+                        if (z_ret == Z_OK) {
+                            read_completed = 1;
+                            printf("Header completed.\n");
+                        } else {
+                            printf("Z_RET header: %d\n", z_ret);
+                            return -4;
+                        }
+                        printf("Z_RET header: %d\n", z_ret);
+                    } while(!read_completed);
+                    break;
+                default:
+                    return -5;
+            }
+            z_ret = inflateInit2(zs, -MAX_WBITS);
+            if (z_ret != Z_OK) return -6;
+
+            index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
+
+            printf("Inflate init.\n");
+
+        case ZIDX_EXPECT_DEFLATE_BLOCKS:
+            zs->next_out  = (unsigned char*) buffer;
+            zs->avail_out = nbytes;
+            read_completed = 0;
+            do {
+                if(zs->avail_in == 0) {
+                    printf("Read more compressed data.\n");
+                    s_read_len = stream->read(stream->context, cmp_buf, cmp_buf_len);
+                    s_ret = stream->error(stream->context);
+                    if (s_ret) return -7;
+
+                    for(int i = 0; i < s_read_len; i++) {
+                        printf("%02x ", cmp_buf[i]);
+                    }
+                    printf("\n");
+
+                    zs->next_in  = cmp_buf;
+                    zs->avail_in = s_read_len;
+                }
+                z_ret = inflate(zs, Z_BLOCK);
+                printf("Z_RET block: %d\n", z_ret);
+                /* printf("Z_RET avail_in: %d\n", zs->avail_in); */
+                /* printf("Z_RET avail_out: %d\n", zs->avail_out); */
+                if (z_ret == Z_OK) {
+                    if (zs->data_type & 64 || zs->avail_out == 0) {
+                        printf("Last block or buffer end.\n");
+                        read_completed = 1;
+                    }
+                    if (zs->data_type & 128) {
+                        printf("Block boundary callback.\n");
+                        if(block_callback != NULL) {
+                            (*block_callback)(callback_context, index, NULL);
+                        }
+                        /* z_ret = inflateReset(zs); */
+                        /* if(z_ret != Z_OK) return -8; */
+                    }
+                } else if (z_ret == Z_STREAM_END) {
+                    printf("End of stream.");
+                    return 0;
+                } else {
+                    printf("Read error.\n");
+                    if(zs->msg != NULL) {
+                        printf("%s\n", zs->msg);
+                    }
+                    return -9;
+                }
+            } while(!read_completed);
+            break;
+    }
+    return zs->next_out - (unsigned char*) buffer;
+}
+
 int zidx_gzip_seek(zidx_index* index, off_t offset, int whence);
 int zidx_gzip_seek_advanced(zidx_index* index, off_t offset, int whence,
                             zidx_block_callback next_block_callback,
