@@ -161,14 +161,13 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
                         zs->avail_in  = s_ret;
 
                         z_ret = inflate(zs, Z_BLOCK);
+                        ZIDX_LOG("[HEADER] z_ret: %d\n", z_ret);
                         if (z_ret == Z_OK) {
                             read_completed = 1;
-                            printf("Header completed.\n");
+                            ZIDX_LOG("[HEADER] Done reading.\n");
                         } else {
-                            printf("Z_RET header: %d\n", z_ret);
                             return -4;
                         }
-                        printf("Z_RET header: %d\n", z_ret);
                     } while(!read_completed);
                     break;
                 default:
@@ -179,7 +178,7 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
 
             index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
 
-            printf("Inflate init.\n");
+            ZIDX_LOG("[HEADER] Inflate initialized.\n");
 
         case ZIDX_EXPECT_DEFLATE_BLOCKS:
             zs->next_out  = (unsigned char*) buffer;
@@ -187,44 +186,42 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
             read_completed = 0;
             do {
                 if(zs->avail_in == 0) {
-                    printf("Read more compressed data.\n");
-                    s_read_len = stream->read(stream->context, cmp_buf, cmp_buf_len);
+                    ZIDX_LOG("[BLOCKS] Reading compressed data.\n");
+                    s_read_len = stream->read(stream->context, cmp_buf,
+                                              cmp_buf_len);
                     s_ret = stream->error(stream->context);
                     if (s_ret) return -7;
-
-                    for(int i = 0; i < s_read_len; i++) {
-                        printf("%02x ", cmp_buf[i]);
-                    }
-                    printf("\n");
 
                     zs->next_in  = cmp_buf;
                     zs->avail_in = s_read_len;
                 }
                 z_ret = inflate(zs, Z_BLOCK);
-                printf("Z_RET block: %d\n", z_ret);
-                /* printf("Z_RET avail_in: %d\n", zs->avail_in); */
-                /* printf("Z_RET avail_out: %d\n", zs->avail_out); */
+                ZIDX_LOG("[BLOCKS] z_ret: %d\n", z_ret);
                 if (z_ret == Z_OK) {
                     if (zs->data_type & 64 || zs->avail_out == 0) {
-                        printf("Last block or buffer end.\n");
+                        ZIDX_LOG("[BLOCKS] Last block and/or full output "
+                                 "buffer.\n");
                         read_completed = 1;
                     }
                     if (zs->data_type & 128) {
-                        printf("Block boundary callback.\n");
+                        ZIDX_LOG("[BLOCKS] Block boundary callback.\n");
                         if(block_callback != NULL) {
                             (*block_callback)(callback_context, index, NULL);
                         }
-                        /* z_ret = inflateReset(zs); */
-                        /* if(z_ret != Z_OK) return -8; */
                     }
                 } else if (z_ret == Z_STREAM_END) {
-                    printf("End of stream.");
+                    ZIDX_LOG("[BLOCKS] End of stream.\n");
                     return 0;
                 } else {
-                    printf("Read error.\n");
-                    if(zs->msg != NULL) {
-                        printf("%s\n", zs->msg);
-                    }
+                    ZIDX_DEBUG_SCOPE(
+                        ZIDX_LOG("[BLOCKS] Read error");
+                        if(zs->msg != NULL) {
+                            ZIDX_LOG(": %s", zs->msg);
+                        } else {
+                            ZIDX_LOG(".");
+                        }
+                        ZIDX_LOG("\n");
+                    );
                     return -9;
                 }
             } while(!read_completed);

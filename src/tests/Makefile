@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=c11 -g -I../
+CFLAGS = -std=c11 -g -I../ -DZIDX_DEBUG
 FILES = ../zidx.c
 LDFLAGS = -lz
 
