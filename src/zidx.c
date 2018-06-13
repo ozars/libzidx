@@ -131,14 +131,17 @@ int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
         case ZIDX_EXPECT_FILE_HEADERS:
             switch(index->stream_type) {
                 case ZIDX_STREAM_DEFLATE:
-                    /* Inflate initialization will be made later for all types.
-                     * */
+                    ZIDX_LOG("DEFLATE is being initialized.\n");
+                    z_ret = inflateInit2(zs, -MAX_WBITS);
+                    if (z_ret != Z_OK) return -1;
                     break;
                 case ZIDX_STREAM_GZIP:
+                    ZIDX_LOG("GZIP is being initialized.\n");
                     z_ret = inflateInit2(zs, 16 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 case ZIDX_STREAM_GZIP_OR_ZLIB:
+                    ZIDX_LOG("GZIP/ZLIB is being initialized.\n");
                     z_ret = inflateInit2(zs, 32 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
@@ -147,7 +150,8 @@ int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
                     zs->next_out  = buffer;
                     zs->avail_out = 0;
                     do {
-                        s_ret = stream->read(stream->context, cmp_buf, cmp_buf_len);
+                        s_ret = stream->read(stream->context, cmp_buf,
+                                             cmp_buf_len);
                         if (stream->error(stream->context)) return -2;
                         if (s_ret == 0) return -3;
 
@@ -157,18 +161,19 @@ int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
                         z_ret = inflate(zs, Z_BLOCK);
                         ZIDX_LOG("[HEADER] z_ret: %d\n", z_ret);
                         if (z_ret == Z_OK) {
-                            read_completed = 1;
                             ZIDX_LOG("[HEADER] Done reading.\n");
+                            read_completed = 1;
                         } else {
+                            ZIDX_LOG("[HEADER] Error reading.\n");
                             return -4;
                         }
                     } while(!read_completed);
+                    z_ret = inflateReset2(zs, -MAX_WBITS);
+                    if (z_ret != Z_OK) return -5;
                     break;
                 default:
-                    return -5;
+                    return -6;
             }
-            z_ret = inflateInit2(zs, -MAX_WBITS);
-            if (z_ret != Z_OK) return -6;
 
             index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
 
@@ -220,7 +225,9 @@ int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
                 }
             } while(!read_completed);
             break;
-    }
+    } // end of stream state switch
+
+    /* Return number of bytes read into the buffer. */
     return zs->next_out - buffer;
 }
 
