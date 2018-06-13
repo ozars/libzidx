@@ -6,6 +6,14 @@
 extern "C" {
 #endif
 
+#ifdef ZIDX_DEBUG
+#define ZIDX_LOG(...) do { printf(__VA_ARGS__); } while(0)
+#define ZIDX_DEBUG_SCOPE(...) do { __VA_ARGS__ } while(0)
+#else
+#define ZIDX_LOG(...) while(0)
+#define ZIDX_DEBUG_SCOPE(...) while(0)
+#endif
+
 int zidx_index_init(zidx_index* index,
                      zidx_compressed_stream* compressed_stream)
 {
