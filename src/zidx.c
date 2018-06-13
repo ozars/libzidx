@@ -57,8 +57,7 @@ int zidx_index_init_advanced(zidx_index* index,
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
-    index->compressed_data_buffer = (unsigned char*)
-                                        malloc(compressed_data_buffer_size);
+    index->compressed_data_buffer = malloc(compressed_data_buffer_size);
     if (!index->compressed_data_buffer) goto memory_fail;
 
     index->window_size                 = window_size;
@@ -96,18 +95,13 @@ int zidx_index_destroy(zidx_index* index)
     return 0;
 }
 
-int zidx_gzip_read(zidx_index* index, void *buffer, size_t nbytes);
-int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
-                            zidx_block_callback block_callback,
-                            void *callback_context);
-
-int zidx_gzip_read(zidx_index* index, void *buffer, size_t nbytes)
+int zidx_gzip_read(zidx_index* index, unsigned char *buffer, size_t nbytes)
 {
     return zidx_gzip_read_advanced(index, buffer, nbytes, NULL, NULL);
 }
 
-int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
-                            zidx_block_callback block_callback,
+int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
+                            size_t nbytes, zidx_block_callback block_callback,
                             void *callback_context)
 {
     /* TODO: Implement Z_SYNC_FLUSH option. */
@@ -150,7 +144,7 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
                     goto read_headers;
                 read_headers:
                     read_completed = 0;
-                    zs->next_out  = (unsigned char*) buffer;
+                    zs->next_out  = buffer;
                     zs->avail_out = 0;
                     do {
                         s_ret = stream->read(stream->context, cmp_buf, cmp_buf_len);
@@ -181,7 +175,7 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
             ZIDX_LOG("[HEADER] Inflate initialized.\n");
 
         case ZIDX_EXPECT_DEFLATE_BLOCKS:
-            zs->next_out  = (unsigned char*) buffer;
+            zs->next_out  = buffer;
             zs->avail_out = nbytes;
             read_completed = 0;
             do {
@@ -227,7 +221,7 @@ int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
             } while(!read_completed);
             break;
     }
-    return zs->next_out - (unsigned char*) buffer;
+    return zs->next_out - buffer;
 }
 
 int zidx_gzip_seek(zidx_index* index, off_t offset, int whence);
@@ -287,12 +281,13 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     return zidx_export_advanced(index, &output_stream, NULL, NULL);
 }
 
-size_t zidx_raw_file_read(void *file, void *buffer, size_t nbytes)
+size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes)
 {
     return fread(buffer, 1, nbytes, (FILE*) file);
 }
 
-size_t zidx_raw_file_write(void *file, const void *buffer, size_t nbytes)
+size_t zidx_raw_file_write(void *file, const unsigned char *buffer,
+                           size_t nbytes)
 {
     return fwrite(buffer, 1, nbytes, (FILE*) file);
 }

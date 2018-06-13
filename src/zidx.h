@@ -41,7 +41,7 @@ extern "C" {
  * \return Less than \p nbytes on error.
  */
 typedef
-size_t (*zidx_stream_read_callback)(void *stream_context, void *buffer,
+size_t (*zidx_stream_read_callback)(void *stream_context, unsigned char *buffer,
                                     size_t nbytes);
 
 /**
@@ -55,7 +55,8 @@ size_t (*zidx_stream_read_callback)(void *stream_context, void *buffer,
  * \return Less than \p nbytes on error.
  */
 typedef
-size_t (*zidx_stream_write_callback)(void *stream_context, const void *buffer,
+size_t (*zidx_stream_write_callback)(void *stream_context,
+                                     const unsigned char *buffer,
                                      size_t nbytes);
 
 /**
@@ -227,9 +228,9 @@ int zidx_index_init_advanced(zidx_index* index,
                              z_stream* z_stream_ptr, int initial_capacity,
                              int window_size, int compressed_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
-int zidx_gzip_read(zidx_index* index, void *buffer, size_t nbytes);
-int zidx_gzip_read_advanced(zidx_index* index, void *buffer, size_t nbytes,
-                            zidx_block_callback block_callback,
+int zidx_gzip_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
+int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
+                            size_t nbytes, zidx_block_callback block_callback,
                             void *callback_context);
 int zidx_gzip_seek(zidx_index* index, off_t offset, int whence);
 int zidx_gzip_seek_advanced(zidx_index* index, off_t offset, int whence,
@@ -277,8 +278,9 @@ int zidx_export(zidx_index *index, FILE* output_index_file);
 
 /* raw file callbacks */
 
-size_t zidx_raw_file_read(void *file, void *buffer, size_t nbytes);
-size_t zidx_raw_file_write(void *file, const void *buffer, size_t nbytes);
+size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes);
+size_t zidx_raw_file_write(void *file, const unsigned char *buffer,
+                           size_t nbytes);
 int zidx_raw_file_seek(void *file, off_t offset, int whence);
 off_t zidx_raw_file_tell(void *file);
 int zidx_raw_file_eof(void *file);
