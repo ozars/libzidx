@@ -148,7 +148,7 @@ typedef struct zidx_compressed_stream
 /**
  * Layout for a gzip index stream.
  */
-typedef struct zidx_gzip_index_stream
+typedef struct zidx_index_stream
 {
     zidx_stream_read_callback  read;
     zidx_stream_write_callback write;
@@ -157,7 +157,7 @@ typedef struct zidx_gzip_index_stream
     zidx_stream_eof_callback   eof;
     zidx_stream_error_callback error;
     void *context;
-} zidx_gzip_index_stream;
+} zidx_index_stream;
 
 /** @} */ // end of streamapi
 
@@ -228,16 +228,16 @@ int zidx_index_init_advanced(zidx_index* index,
                              z_stream* z_stream_ptr, int initial_capacity,
                              int window_size, int compressed_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
-int zidx_gzip_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
-int zidx_gzip_read_advanced(zidx_index* index, unsigned char *buffer,
+int zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
+int zidx_read_advanced(zidx_index* index, unsigned char *buffer,
                             size_t nbytes, zidx_block_callback block_callback,
                             void *callback_context);
-int zidx_gzip_seek(zidx_index* index, off_t offset, int whence);
-int zidx_gzip_seek_advanced(zidx_index* index, off_t offset, int whence,
+int zidx_seek(zidx_index* index, off_t offset, int whence);
+int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                             zidx_block_callback block_callback,
                             void *callback_context);
-off_t zidx_gzip_tell(zidx_index* index);
-int zidx_gzip_rewind(zidx_index* index);
+off_t zidx_tell(zidx_index* index);
+int zidx_rewind(zidx_index* index);
 
 int zidx_build_index(zidx_index* index, off_t spacing_length);
 int zidx_build_index_advanced(zidx_index* index,
@@ -263,12 +263,12 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_checkpoint *offset);
 
 int zidx_import_advanced(zidx_index *index,
-                         const zidx_gzip_index_stream *stream,
+                         const zidx_index_stream *stream,
                          zidx_import_filter_callback filter,
                          void *filter_context);
 
 int zidx_export_advanced(zidx_index *index,
-                         const zidx_gzip_index_stream *stream,
+                         const zidx_index_stream *stream,
                          zidx_export_filter_callback filter,
                          void *filter_context);
 
