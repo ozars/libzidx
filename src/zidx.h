@@ -5,9 +5,8 @@
 #ifndef _ZIDX_H_
 #define _ZIDX_H_
 
-#include <stdio.h>     // FILE
+#include <stdio.h>     // FILE*
 #include <sys/types.h> // off_t, size_t, ssize_t
-#include <zlib.h>
 
 #define ZIDX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
 #define ZIDX_DEFAULT_WINDOW_SIZE                 (32768)
@@ -15,6 +14,11 @@
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#ifndef ZLIB_H
+/* Typedef declaration of z_stream from zlib.h required for z_stream* */
+typedef struct z_stream_s z_stream;
 #endif
 
 /*******************************************************************************

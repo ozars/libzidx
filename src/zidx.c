@@ -1,6 +1,7 @@
 #include "zidx.h"
 
 #include <stdlib.h>
+#include <zlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,6 +55,7 @@ int zidx_index_init_advanced(zidx_index* index,
     index->list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint)
                                                  * initial_capacity);
     if (!index->list) goto memory_fail;
+
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
