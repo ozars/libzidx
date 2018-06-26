@@ -290,7 +290,54 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     return 0;
 }
 
-int zidx_get_checkpoint(zidx_index* index, off_t offset);
+int zidx_get_checkpoint(zidx_index* index, off_t offset)
+{
+    #define ZIDX_OFFSET_(idx) (index->list[idx].offset.uncompressed_offset)
+
+    /* Variables used for binary search. */
+    int left, right;
+
+    /* Return value holding the index or error number. */
+    int idx;
+
+    /* Return not found if list is empty. */
+    if(index->list_count == 0) return -1;
+
+    left  = 0;
+    right = index->list_count - 1;
+
+    /* Check the last element first. We check it in here so that we don't
+     * account for it in every iteartion of the loop below. */
+    if(ZIDX_OFFSET_(right) < offset) {
+        return idx;
+    }
+
+    /* Binary search for index. */
+    while (left < right) {
+
+        idx = (left + right) / 2;
+
+        /* If current offset is greater, we need to move the range to left by
+         * updating `right`. */
+        if(ZIDX_OFFSET_(idx) > offset) {
+            right = idx - 1;
+
+        /* If current offset is less than or equal, but also the following one,
+         * we need to move the range to right by updating `left`. */
+        } else if(ZIDX_OFFSET_(idx + 1) <= offset) {
+            left = idx + 1;
+
+        /* If current offset is less than or equal, and the following one is
+         * greater, we found the lower bound, return it. */
+        } else {
+            return idx;
+        }
+    }
+
+    return -1;
+
+    #undef ZIDX_OFFSET_
+}
 
 void zidx_extend_index_size(zidx_index* index, size_t nmembers);
 void zidx_shrink_index_size(zidx_index* index);
