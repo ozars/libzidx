@@ -284,6 +284,8 @@ int zidx_export(zidx_index *index, FILE* output_index_file);
 
 /* raw file callbacks */
 
+int zidx_compressed_file_init(zidx_compressed_stream *stream, FILE *f);
+int zidx_index_file_init(zidx_index_stream *stream, FILE *f);
 size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes);
 size_t zidx_raw_file_write(void *file, const unsigned char *buffer,
                            size_t nbytes);

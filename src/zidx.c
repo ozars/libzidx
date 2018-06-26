@@ -290,6 +290,36 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     return zidx_export_advanced(index, &output_stream, NULL, NULL);
 }
 
+int zidx_compressed_file_init(zidx_compressed_stream *stream, FILE *file)
+{
+    if(stream == NULL) return -1;
+
+    stream->read    = zidx_raw_file_read;
+    stream->seek    = zidx_raw_file_seek;
+    stream->tell    = zidx_raw_file_tell;
+    stream->eof     = zidx_raw_file_eof;
+    stream->error   = zidx_raw_file_error;
+    stream->length  = zidx_raw_file_length;
+    stream->context = (void*) file;
+
+    return 0;
+}
+
+int zidx_index_file_init(zidx_index_stream *stream, FILE *file)
+{
+    if(stream == NULL) return -1;
+
+    stream->read    = zidx_raw_file_read;
+    stream->write   = zidx_raw_file_write;
+    stream->seek    = zidx_raw_file_seek;
+    stream->tell    = zidx_raw_file_tell;
+    stream->eof     = zidx_raw_file_eof;
+    stream->error   = zidx_raw_file_error;
+    stream->context = (void*) file;
+
+    return 0;
+}
+
 size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes)
 {
     return fread(buffer, 1, nbytes, (FILE*) file);
