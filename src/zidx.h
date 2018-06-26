@@ -221,7 +221,7 @@ typedef struct zidx_index
 typedef
 int (*zidx_block_callback)(void *context,
                            zidx_index *index,
-                           zidx_checkpoint *current_checkpoint);
+                           zidx_checkpoint_offset *offset);
 
 int zidx_index_init(zidx_index* index,
                     zidx_compressed_stream* compressed_stream);
@@ -248,6 +248,9 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback block_callback,
                               void *callback_context);
 
+int zidx_create_checkpoint(zidx_checkpoint* new_checkpoint,
+                           zidx_checkpoint_offset* offset,
+                           z_stream* z_stream_ptr);
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 
@@ -275,7 +278,6 @@ int zidx_export_advanced(zidx_index *index,
                          const zidx_index_stream *stream,
                          zidx_export_filter_callback filter,
                          void *filter_context);
-
 
 int zidx_import(zidx_index *index, FILE* input_index_file);
 int zidx_export(zidx_index *index, FILE* output_index_file);
