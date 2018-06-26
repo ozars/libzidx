@@ -60,7 +60,8 @@ int zidx_index_init_advanced(zidx_index* index,
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
-    index->compressed_data_buffer = malloc(compressed_data_buffer_size);
+    index->compressed_data_buffer = (unsigned char*)
+                                        malloc(compressed_data_buffer_size);
     if (!index->compressed_data_buffer) goto memory_fail;
 
     index->window_size                 = window_size;
@@ -257,7 +258,8 @@ int zidx_create_checkpoint(zidx_index* index,
     if (offset == NULL) return -3;
 
     if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = malloc(index->window_size);
+        new_checkpoint->window_data = (unsigned char *)
+                                          malloc(index->window_size);
     }
 
     memcpy(&new_checkpoint->offset, offset, sizeof(*offset));
