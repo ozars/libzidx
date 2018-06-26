@@ -6,6 +6,7 @@
 #define _ZIDX_H_
 
 #include <stdio.h>     // FILE*
+#include <stdint.h>
 #include <sys/types.h> // off_t, size_t, ssize_t
 
 #define ZIDX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
@@ -177,6 +178,7 @@ typedef struct zidx_checkpoint_offset
 typedef struct zidx_checkpoint
 {
     zidx_checkpoint_offset offset;
+    uint32_t checksum;
     unsigned char *window_data;
 } zidx_checkpoint;
 
