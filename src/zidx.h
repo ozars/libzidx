@@ -215,7 +215,7 @@ typedef struct zidx_index
     zidx_checksum_option checksum_option;
     unsigned char *compressed_data_buffer;
     int compressed_data_buffer_size;
-    int window_size;
+    unsigned int window_size;
 } zidx_index;
 
 /* read/write/seek/index functions */
@@ -250,9 +250,9 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback block_callback,
                               void *callback_context);
 
-int zidx_create_checkpoint(zidx_checkpoint* new_checkpoint,
-                           zidx_checkpoint_offset* offset,
-                           z_stream* z_stream_ptr);
+int zidx_create_checkpoint(zidx_index* index,
+                           zidx_checkpoint* new_checkpoint,
+                           zidx_checkpoint_offset* offset);
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 

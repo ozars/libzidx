@@ -1,6 +1,7 @@
 #include "zidx.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <zlib.h>
 
 #ifdef __cplusplus
@@ -245,7 +246,50 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback next_block_callback,
                               void *callback_context);
 
-int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
+int zidx_create_checkpoint(zidx_index* index,
+                           zidx_checkpoint* new_checkpoint,
+                           zidx_checkpoint_offset* offset)
+{
+    int z_ret;
+
+    if (index == NULL) return -1;
+    if (new_checkpoint == NULL) return -2;
+    if (offset == NULL) return -3;
+
+    if (new_checkpoint->window_data == NULL) {
+        new_checkpoint->window_data = malloc(index->window_size);
+    }
+
+    memcpy(&new_checkpoint->offset, offset, sizeof(*offset));
+
+    z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
+                                 &index->window_size);
+    if (z_ret != Z_OK) return -4;
+
+    return 0;
+}
+
+int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
+{
+    if (index == NULL) return -1;
+    if (checkpoint == NULL) return -2;
+
+    if (index->list_capacity == index->list_count) {
+        zidx_extend_index_size(index, index->list_count);
+    }
+
+    int last_uncmp_offset = index->list[index->list_count - 1].offset
+                                .uncompressed_offset;
+    if (checkpoint->offset.uncompressed_offset <= last_uncmp_offset) {
+        return -3;
+    }
+
+    memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
+    index->list_count++;
+
+    return 0;
+}
+
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 
 void zidx_extend_index_size(zidx_index* index, size_t nmembers);
