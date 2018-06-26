@@ -339,7 +339,20 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     #undef ZIDX_OFFSET_
 }
 
-void zidx_extend_index_size(zidx_index* index, size_t nmembers);
+int zidx_extend_index_size(zidx_index* index, size_t nmembers)
+{
+    zidx_checkpoint *new_list;
+
+    new_list = (zidx_checkpoint*) realloc(index->list, sizeof(zidx_checkpoint)
+                                           * (index->list_capacity + nmembers));
+    if(!new_list) return -1;
+
+    index->list = new_list;
+    index->list_capacity += nmembers;
+
+    return 0;
+}
+
 void zidx_shrink_index_size(zidx_index* index);
 
 /* TODO: Implement these. */

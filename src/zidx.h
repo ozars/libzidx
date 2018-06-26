@@ -256,7 +256,7 @@ int zidx_create_checkpoint(zidx_index* index,
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 
-void zidx_extend_index_size(zidx_index* index, size_t nmembers);
+int zidx_extend_index_size(zidx_index* index, size_t nmembers);
 void zidx_shrink_index_size(zidx_index* index);
 
 /* index import/export functions */
