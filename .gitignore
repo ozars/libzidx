@@ -1,3 +1,6 @@
+# Temporarily ignore test files
+tests/
+
 bin/
 doc/
 
