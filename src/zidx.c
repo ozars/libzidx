@@ -99,14 +99,14 @@ int zidx_index_destroy(zidx_index* index)
     return 0;
 }
 
-int zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes)
+size_t zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes)
 {
     return zidx_read_advanced(index, buffer, nbytes, NULL, NULL);
 }
 
-int zidx_read_advanced(zidx_index* index, unsigned char *buffer,
-                            size_t nbytes, zidx_block_callback block_callback,
-                            void *callback_context)
+size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
+                          size_t nbytes, zidx_block_callback block_callback,
+                          void *callback_context)
 {
     /* TODO: Implement Z_SYNC_FLUSH option. */
     /* TODO: Implement decompression of existing compressed data after read
