@@ -10,11 +10,48 @@ extern "C" {
 
 #ifdef ZIDX_DEBUG
 #define ZIDX_LOG(...) do { printf(__VA_ARGS__); } while(0)
-#define ZIDX_DEBUG_SCOPE(...) do { __VA_ARGS__ } while(0)
 #else
 #define ZIDX_LOG(...) while(0)
-#define ZIDX_DEBUG_SCOPE(...) while(0)
 #endif
+
+static int get_unused_bits_count(z_stream* zs)
+{
+    return zs->data_type & 7;
+}
+
+static int is_last_deflate_block(z_stream* zs)
+{
+    return zs->data_type & 64;
+}
+
+static int is_on_block_boundary(z_stream *zs)
+{
+    return zs->data_type & 128;
+}
+
+static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
+{
+    size_t available_compressed_bytes;
+    size_t available_uncompressed_bytes;
+    size_t compressed_bytes_inflated;
+    size_t uncompressed_bytes_inflated;
+    int z_ret;
+
+    available_compressed_bytes   = zs->avail_in;
+    available_uncompressed_bytes = zs->avail_out;
+
+    z_ret = inflate(zs, flush);
+    if(z_ret != Z_OK) return z_ret;
+
+    compressed_bytes_inflated = zs->avail_in - available_compressed_bytes;
+    uncompressed_bytes_inflated = zs->avail_out - available_uncompressed_bytes;
+
+    index->offset.compressed_offset += compressed_bytes_inflated;
+    index->offset.uncompressed_offset += uncompressed_bytes_inflated;
+    index->offset.compressed_offset_bits = get_unused_bits_count(zs);
+
+    return Z_OK;
+}
 
 int zidx_index_init(zidx_index* index,
                      zidx_compressed_stream* compressed_stream)
@@ -67,11 +104,14 @@ int zidx_index_init_advanced(zidx_index* index,
     index->window_size                 = window_size;
     index->compressed_data_buffer_size = compressed_data_buffer_size;
 
-    index->compressed_stream = compressed_stream;
-    index->z_stream          = z_stream_ptr;
-    index->stream_type       = stream_type;
-    index->stream_state      = ZIDX_EXPECT_FILE_HEADERS;
-    index->checksum_option   = checksum_option;
+    index->compressed_stream             = compressed_stream;
+    index->offset.compressed_offset      = 0;
+    index->offset.compressed_offset_bits = 0;
+    index->offset.uncompressed_offset    = 0;
+    index->z_stream                      = z_stream_ptr;
+    index->stream_type                   = stream_type;
+    index->stream_state                  = ZIDX_EXPECT_FILE_HEADERS;
+    index->checksum_option               = checksum_option;
 
     return 0;
 memory_fail:
@@ -117,11 +157,11 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
     /* TODO: Implement window bits to reflect reality (window size). */
     /* TODO: Convert buffer type to unsigned char* */
 
-    int z_ret;      /* Return value for zlib calls. */
-    int s_ret;      /* Return value for stream calls. */
-    int s_read_len; /* Return value for stream read calls. */
+    int z_ret;         /* Return value for zlib calls. */
+    int s_ret;         /* Return value for stream calls. */
+    size_t s_read_len; /* Return value for stream read calls. */
 
-    int read_completed;
+    unsigned char read_completed;
 
     /* Aliases for frequently used elements. */
     zidx_compressed_stream *stream = index->compressed_stream;
@@ -149,19 +189,20 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 read_headers:
+                    zs->next_out   = buffer;
+                    zs->avail_out  = 0;
                     read_completed = 0;
-                    zs->next_out  = buffer;
-                    zs->avail_out = 0;
-                    do {
-                        s_ret = stream->read(stream->context, cmp_buf,
-                                             cmp_buf_len);
+                    while (!read_completed) {
+                        s_read_len = stream->read(stream->context, cmp_buf,
+                                                  cmp_buf_len);
                         if (stream->error(stream->context)) return -2;
-                        if (s_ret == 0) return -3;
+                        if (s_read_len == 0) return -3;
 
-                        zs->next_in   = cmp_buf;
-                        zs->avail_in  = s_ret;
+                        zs->next_in     = cmp_buf;
+                        zs->avail_in    = s_read_len;
 
-                        z_ret = inflate(zs, Z_BLOCK);
+                        z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
+
                         ZIDX_LOG("[HEADER] z_ret: %d\n", z_ret);
                         if (z_ret == Z_OK) {
                             ZIDX_LOG("[HEADER] Done reading.\n");
@@ -170,7 +211,7 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
                             ZIDX_LOG("[HEADER] Error reading.\n");
                             return -4;
                         }
-                    } while(!read_completed);
+                    } // while not read_completed
                     z_ret = inflateReset2(zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -5;
                     break;
@@ -186,47 +227,51 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
             read_completed = 0;
-            do {
+            while (!read_completed) {
                 if(zs->avail_in == 0) {
                     ZIDX_LOG("[BLOCKS] Reading compressed data.\n");
                     s_read_len = stream->read(stream->context, cmp_buf,
                                               cmp_buf_len);
-                    s_ret = stream->error(stream->context);
-                    if (s_ret) return -7;
+                    if (stream->error(stream->context)) return -7;
 
                     zs->next_in  = cmp_buf;
                     zs->avail_in = s_read_len;
                 }
-                z_ret = inflate(zs, Z_BLOCK);
+                z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
                 ZIDX_LOG("[BLOCKS] z_ret: %d\n", z_ret);
                 if (z_ret == Z_OK) {
-                    if (zs->data_type & 64 || zs->avail_out == 0) {
-                        ZIDX_LOG("[BLOCKS] Last block and/or full output "
-                                 "buffer.\n");
-                        read_completed = 1;
-                    }
-                    if (zs->data_type & 128) {
-                        ZIDX_LOG("[BLOCKS] Block boundary callback.\n");
-                        if(block_callback != NULL) {
-                            (*block_callback)(callback_context, index, NULL);
+                    if (is_on_block_boundary(zs)) {
+                        ZIDX_LOG("[BLOCKS] On block boundary.\n");
+                        if (is_last_deflate_block(zs)) {
+                            ZIDX_LOG("[BLOCKS] Last block.\n");
+                            read_completed = 1;
                         }
+                        if (block_callback != NULL) {
+                            ZIDX_LOG("[BLOCKS] Block boundary callback.\n");
+                            (*block_callback)(callback_context,
+                                              index, &index->offset);
+                        }
+                    }
+                    if (zs->avail_out == 0) {
+                        ZIDX_LOG("[BLOCKS] Buffer is full.\n");
+                        read_completed = 1;
                     }
                 } else if (z_ret == Z_STREAM_END) {
                     ZIDX_LOG("[BLOCKS] End of stream.\n");
                     return 0;
                 } else {
-                    ZIDX_DEBUG_SCOPE(
-                        ZIDX_LOG("[BLOCKS] Read error");
-                        if(zs->msg != NULL) {
-                            ZIDX_LOG(": %s", zs->msg);
-                        } else {
-                            ZIDX_LOG(".");
-                        }
-                        ZIDX_LOG("\n");
-                    );
+                    #ifdef ZIDX_DEBUG
+                    ZIDX_LOG("[BLOCKS] Read error");
+                    if(zs->msg != NULL) {
+                        ZIDX_LOG(": %s", zs->msg);
+                    } else {
+                        ZIDX_LOG(".");
+                    }
+                    ZIDX_LOG("\n");
+                    #endif
                     return -9;
                 }
-            } while(!read_completed);
+            } // while not read_completed
             break;
     } // end of stream state switch
 
@@ -261,22 +306,29 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         z_ret = inflateReset2(index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -2;
 
-        f_ret = index->compressed_stream->read(
-                                            index->compressed_stream->context,
-                                            &byte, 1);
+        f_ret = index->compressed_stream->seek(
+                                        index->compressed_stream->context,
+                                        checkpoint->offset.compressed_offset,
+                                        ZIDX_SEEK_SET);
+        if (f_ret != 1) return -4;
 
-        if (f_ret != 1) return -3;
+        f_ret = index->compressed_stream->read(
+                                        index->compressed_stream->context,
+                                        &byte, 1);
+
+        if (f_ret != 1) return -5;
 
         byte >>= (8 - checkpoint->offset.compressed_offset_bits);
 
         z_ret = inflatePrime(index->z_stream,
                              checkpoint->offset.compressed_offset_bits, byte);
-        if (z_ret != Z_OK) return -4;
+        if (z_ret != Z_OK) return -6;
 
         z_ret = inflateSetDictionary(index->z_stream, checkpoint->window_data,
                                      index->window_size);
-        if (z_ret != Z_OK) return -5;
+        if (z_ret != Z_OK) return -7;
 
+    /* TODO: If checkpoint is not found. */
     } else {
         // TODO
         return -1;

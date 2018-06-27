@@ -208,6 +208,7 @@ typedef struct zidx_index
     zidx_compressed_stream *compressed_stream;
     zidx_stream_state stream_state;
     zidx_stream_type stream_type;
+    zidx_checkpoint_offset offset;
     z_stream* z_stream;
     int list_count;
     int list_capacity;
@@ -216,6 +217,7 @@ typedef struct zidx_index
     unsigned char *compressed_data_buffer;
     int compressed_data_buffer_size;
     unsigned int window_size;
+    /* TODO: Add corrupted flag to check if state is corrupted. */
 } zidx_index;
 
 /* read/write/seek/index functions */
