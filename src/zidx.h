@@ -172,7 +172,7 @@ typedef struct zidx_checkpoint_offset
 {
     off_t uncompressed_offset;
     off_t compressed_offset;
-    int compressed_offset_bits;
+    unsigned char compressed_offset_bits;
 } zidx_checkpoint_offset;
 
 typedef struct zidx_checkpoint

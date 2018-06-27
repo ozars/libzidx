@@ -129,7 +129,6 @@ int zidx_read_advanced(zidx_index* index, unsigned char *buffer,
     int cmp_buf_len                = index->compressed_data_buffer_size;
     z_stream *zs                   = index->z_stream;
 
-
     switch (index->stream_state) {
         /* If headers are expected */
         case ZIDX_EXPECT_FILE_HEADERS:
@@ -235,10 +234,57 @@ int zidx_read_advanced(zidx_index* index, unsigned char *buffer,
     return zs->next_out - buffer;
 }
 
-int zidx_seek(zidx_index* index, off_t offset, int whence);
+int zidx_seek(zidx_index* index, off_t offset, int whence)
+{
+    return zidx_seek_advanced(index, offset, whence, NULL, NULL);
+}
+
 int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
-                            zidx_block_callback next_block_callback,
-                            void *callback_context);
+                       zidx_block_callback next_block_callback,
+                       void *callback_context)
+{
+    /* TODO: If this function fails to reset z_stream, it will leave z_stream in
+     * an invalid state. Must be handled. */
+    int z_ret;
+    int f_ret;
+    unsigned char byte;
+    zidx_checkpoint *checkpoint;
+    int checkpoint_idx;
+
+    checkpoint_idx = zidx_get_checkpoint(index, offset);
+
+    /* If checkpoint found. */
+    if (checkpoint_idx >= 0) {
+        checkpoint = &index->list[checkpoint_idx];
+
+        /* TODO: Fix window size */
+        z_ret = inflateReset2(index->z_stream, -MAX_WBITS);
+        if (z_ret != Z_OK) return -2;
+
+        f_ret = index->compressed_stream->read(
+                                            index->compressed_stream->context,
+                                            &byte, 1);
+
+        if (f_ret != 1) return -3;
+
+        byte >>= (8 - checkpoint->offset.compressed_offset_bits);
+
+        z_ret = inflatePrime(index->z_stream,
+                             checkpoint->offset.compressed_offset_bits, byte);
+        if (z_ret != Z_OK) return -4;
+
+        z_ret = inflateSetDictionary(index->z_stream, checkpoint->window_data,
+                                     index->window_size);
+        if (z_ret != Z_OK) return -5;
+
+    } else {
+        // TODO
+        return -1;
+
+    }
+    return 0;
+}
+
 off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
 
@@ -349,7 +395,7 @@ int zidx_extend_index_size(zidx_index* index, size_t nmembers)
                                            * (index->list_capacity + nmembers));
     if(!new_list) return -1;
 
-    index->list = new_list;
+    index->list           = new_list;
     index->list_capacity += nmembers;
 
     return 0;
