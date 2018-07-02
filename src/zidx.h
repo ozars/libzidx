@@ -217,6 +217,8 @@ typedef struct zidx_index
     unsigned char *compressed_data_buffer;
     int compressed_data_buffer_size;
     unsigned int window_size;
+
+    char z_stream_initialized;
     /* TODO: Add corrupted flag to check if state is corrupted. */
 } zidx_index;
 

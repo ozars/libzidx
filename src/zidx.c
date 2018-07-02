@@ -53,6 +53,20 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     return Z_OK;
 }
 
+static int initialize_zstream(zidx_index* index, z_stream* zs, int window_bits)
+{
+    int z_ret;
+    if (!index->z_stream_initialized) {
+        z_ret = inflateInit2(zs, window_bits);
+        if (z_ret == Z_OK) {
+            index->z_stream_initialized = 1;
+        }
+    } else {
+        z_ret = inflateReset2(zs, window_bits);
+    }
+    return z_ret;
+}
+
 int zidx_index_init(zidx_index* index,
                      zidx_compressed_stream* compressed_stream)
 {
@@ -112,6 +126,7 @@ int zidx_index_init_advanced(zidx_index* index,
     index->stream_type                   = stream_type;
     index->stream_state                  = ZIDX_EXPECT_FILE_HEADERS;
     index->checksum_option               = checksum_option;
+    index->z_stream_initialized          = 0;
 
     return 0;
 memory_fail:
@@ -175,17 +190,17 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
             switch(index->stream_type) {
                 case ZIDX_STREAM_DEFLATE:
                     ZIDX_LOG("DEFLATE is being initialized.\n");
-                    z_ret = inflateInit2(zs, -MAX_WBITS);
+                    z_ret = initialize_zstream(index, zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     break;
                 case ZIDX_STREAM_GZIP:
                     ZIDX_LOG("GZIP is being initialized.\n");
-                    z_ret = inflateInit2(zs, 16 + MAX_WBITS);
+                    z_ret = initialize_zstream(index, zs, 16 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 case ZIDX_STREAM_GZIP_OR_ZLIB:
                     ZIDX_LOG("GZIP/ZLIB is being initialized.\n");
-                    z_ret = inflateInit2(zs, 32 + MAX_WBITS);
+                    z_ret = initialize_zstream(index, zs, 32 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 read_headers:
@@ -212,7 +227,7 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
                             return -4;
                         }
                     } // while not read_completed
-                    z_ret = inflateReset2(zs, -MAX_WBITS);
+                    z_ret = initialize_zstream(index, zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -5;
                     break;
                 default:
@@ -293,24 +308,32 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     int z_ret;
     int f_ret;
     unsigned char byte;
-    zidx_checkpoint *checkpoint;
+    zidx_checkpoint *checkpoint = NULL;
     int checkpoint_idx;
 
     checkpoint_idx = zidx_get_checkpoint(index, offset);
+    checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
 
-    /* If checkpoint found. */
-    if (checkpoint_idx >= 0) {
-        checkpoint = &index->list[checkpoint_idx];
+    if (checkpoint == NULL) {
+        f_ret = index->compressed_stream->seek(
+                                        index->compressed_stream->context,
+                                        0,
+                                        ZIDX_SEEK_SET);
+        if (f_ret < 0) return -8;
 
+        index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
+    } else if (
+            index->offset.compressed_offset < checkpoint->offset.compressed_offset
+            || index->offset.compressed_offset > offset) {
         /* TODO: Fix window size */
-        z_ret = inflateReset2(index->z_stream, -MAX_WBITS);
+        z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -2;
 
         f_ret = index->compressed_stream->seek(
                                         index->compressed_stream->context,
                                         checkpoint->offset.compressed_offset,
                                         ZIDX_SEEK_SET);
-        if (f_ret != 1) return -4;
+        if (f_ret < 0) return -4;
 
         f_ret = index->compressed_stream->read(
                                         index->compressed_stream->context,
@@ -328,12 +351,9 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                      index->window_size);
         if (z_ret != Z_OK) return -7;
 
-    /* TODO: If checkpoint is not found. */
-    } else {
-        // TODO
-        return -1;
-
+        index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
     }
+
     return 0;
 }
 
