@@ -75,7 +75,8 @@ int zidx_index_init(zidx_index* index,
                                     ZIDX_CHECKSUM_DEFAULT, NULL,
                                     ZIDX_DEFAULT_INITIAL_LIST_CAPACITY,
                                     ZIDX_DEFAULT_WINDOW_SIZE,
-                                    ZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE);
+                                    ZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
+                                    ZIDX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
 }
 
 int zidx_index_init_advanced(zidx_index* index,
@@ -83,7 +84,8 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
-                             int window_size, int compressed_data_buffer_size)
+                             int window_size, size_t compressed_data_buffer_size,
+                             size_t seeking_data_buffer_size)
 {
     /* assert(index != NULL); */
     /* assert(compressed_stream != NULL); */
@@ -91,6 +93,7 @@ int zidx_index_init_advanced(zidx_index* index,
     /* assert checksum_option is valid. */
     index->list = NULL;
     index->compressed_data_buffer = NULL;
+    index->seeking_data_buffer = NULL;
 
     if (!z_stream_ptr) {
         z_stream_ptr = (z_stream*) malloc(sizeof(z_stream));
@@ -115,8 +118,13 @@ int zidx_index_init_advanced(zidx_index* index,
                                         malloc(compressed_data_buffer_size);
     if (!index->compressed_data_buffer) goto memory_fail;
 
+    index->seeking_data_buffer = (unsigned char*)
+                                        malloc(seeking_data_buffer_size);
+    if (!index->seeking_data_buffer) goto memory_fail;
+
     index->window_size                 = window_size;
     index->compressed_data_buffer_size = compressed_data_buffer_size;
+    index->seeking_data_buffer_size    = seeking_data_buffer_size;
 
     index->compressed_stream             = compressed_stream;
     index->offset.compressed_offset      = 0;
@@ -133,6 +141,7 @@ memory_fail:
     free(z_stream_ptr);
     free(index->list);
     free(index->compressed_data_buffer);
+    free(index->seeking_data_buffer);
 /* fail: */
     return -1;
 }
@@ -308,8 +317,9 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     int z_ret;
     int f_ret;
     unsigned char byte;
-    zidx_checkpoint *checkpoint = NULL;
+    zidx_checkpoint *checkpoint;
     int checkpoint_idx;
+    off_t bytes_remaining;
 
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
@@ -322,6 +332,9 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         if (f_ret < 0) return -8;
 
         index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
+        index->offset.compressed_offset = 0;
+        index->offset.compressed_offset_bits = 0;
+        index->offset.uncompressed_offset = 0;
     } else if (
             index->offset.compressed_offset < checkpoint->offset.compressed_offset
             || index->offset.compressed_offset > offset) {
@@ -331,27 +344,34 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
 
         f_ret = index->compressed_stream->seek(
                                         index->compressed_stream->context,
-                                        checkpoint->offset.compressed_offset,
+                                        checkpoint->offset.compressed_offset
+                                            - (checkpoint->offset.compressed_offset_bits > 0
+                                                ? 1 : 0),
                                         ZIDX_SEEK_SET);
         if (f_ret < 0) return -4;
 
-        f_ret = index->compressed_stream->read(
-                                        index->compressed_stream->context,
-                                        &byte, 1);
+        if (checkpoint->offset.compressed_offset_bits > 0) {
+            f_ret = index->compressed_stream->read(
+                                            index->compressed_stream->context,
+                                            &byte, 1);
 
-        if (f_ret != 1) return -5;
+            if (f_ret != 1) return -5;
 
-        byte >>= (8 - checkpoint->offset.compressed_offset_bits);
+            byte >>= (8 - checkpoint->offset.compressed_offset_bits);
 
-        z_ret = inflatePrime(index->z_stream,
-                             checkpoint->offset.compressed_offset_bits, byte);
-        if (z_ret != Z_OK) return -6;
+            z_ret = inflatePrime(index->z_stream,
+                                 checkpoint->offset.compressed_offset_bits, byte);
+            if (z_ret != Z_OK) return -6;
+        }
 
         z_ret = inflateSetDictionary(index->z_stream, checkpoint->window_data,
                                      index->window_size);
-        if (z_ret != Z_OK) return -7;
+        if (z_ret != Z_OK) return -8;
 
         index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
+        index->offset.compressed_offset = checkpoint->offset.compressed_offset;
+        index->offset.compressed_offset_bits = checkpoint->offset.compressed_offset_bits;
+        index->offset.uncompressed_offset = checkpoint->offset.compressed_offset;
     }
 
     return 0;

@@ -12,6 +12,7 @@
 #define ZIDX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
 #define ZIDX_DEFAULT_WINDOW_SIZE                 (32768)
 #define ZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
+#define ZIDX_DEFAULT_SEEKING_DATA_BUFFER_SIZE    (32768)
 
 #ifdef __cplusplus
 extern "C" {
@@ -214,9 +215,11 @@ typedef struct zidx_index
     int list_capacity;
     zidx_checkpoint *list;
     zidx_checksum_option checksum_option;
+    int window_size;
     unsigned char *compressed_data_buffer;
-    int compressed_data_buffer_size;
-    unsigned int window_size;
+    size_t compressed_data_buffer_size;
+    unsigned char *seeking_data_buffer;
+    size_t seeking_data_buffer_size;
 
     char z_stream_initialized;
     /* TODO: Add corrupted flag to check if state is corrupted. */
@@ -236,7 +239,9 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
-                             int window_size, int compressed_data_buffer_size);
+                             int window_size,
+                             size_t compressed_data_buffer_size,
+                             size_t seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
 size_t zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
 size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
