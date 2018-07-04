@@ -27,7 +27,7 @@ int main()
     z_ret = zidx_index_init(&index, &stream);
     printf("%d\n", z_ret);
     do {
-        z_ret = zidx_gzip_read(&index, buffer, sizeof(buffer));
+        z_ret = zidx_read(&index, buffer, sizeof(buffer));
         printf("Read length: %d\n", z_ret);
         if(z_ret >= 0) {
             printf("%.*s\n", z_ret, buffer);
