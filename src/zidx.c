@@ -31,10 +31,10 @@ static int is_on_block_boundary(z_stream *zs)
 
 static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 {
-    size_t available_compressed_bytes;
-    size_t available_uncompressed_bytes;
-    size_t compressed_bytes_inflated;
-    size_t uncompressed_bytes_inflated;
+    int available_compressed_bytes;
+    int available_uncompressed_bytes;
+    int compressed_bytes_inflated;
+    int uncompressed_bytes_inflated;
     int z_ret;
 
     available_compressed_bytes   = zs->avail_in;
@@ -84,8 +84,9 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
-                             int window_size, size_t compressed_data_buffer_size,
-                             size_t seeking_data_buffer_size)
+                             unsigned int window_size,
+                             int compressed_data_buffer_size,
+                             int seeking_data_buffer_size)
 {
     /* assert(index != NULL); */
     /* assert(compressed_stream != NULL); */
@@ -114,12 +115,11 @@ int zidx_index_init_advanced(zidx_index* index,
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
-    index->compressed_data_buffer = (unsigned char*)
+    index->compressed_data_buffer = (uint8_t*)
                                         malloc(compressed_data_buffer_size);
     if (!index->compressed_data_buffer) goto memory_fail;
 
-    index->seeking_data_buffer = (unsigned char*)
-                                        malloc(seeking_data_buffer_size);
+    index->seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
     if (!index->seeking_data_buffer) goto memory_fail;
 
     index->window_size                 = window_size;
@@ -163,14 +163,14 @@ int zidx_index_destroy(zidx_index* index)
     return 0;
 }
 
-size_t zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes)
+int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes)
 {
     return zidx_read_advanced(index, buffer, nbytes, NULL, NULL);
 }
 
-size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
-                          size_t nbytes, zidx_block_callback block_callback,
-                          void *callback_context)
+int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
+                       int nbytes, zidx_block_callback block_callback,
+                       void *callback_context)
 {
     /* TODO: Implement Z_SYNC_FLUSH option. */
     /* TODO: Implement decompression of existing compressed data after read
@@ -179,17 +179,17 @@ size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
      * shorter then expected buffer length.  */
     /* TODO: Implement support for concatanated gzip streams. */
     /* TODO: Implement window bits to reflect reality (window size). */
-    /* TODO: Convert buffer type to unsigned char* */
+    /* TODO: Convert buffer type to uint8_t* */
 
-    int z_ret;         /* Return value for zlib calls. */
-    int s_ret;         /* Return value for stream calls. */
-    size_t s_read_len; /* Return value for stream read calls. */
+    int z_ret;      /* Return value for zlib calls. */
+    int s_ret;      /* Return value for stream calls. */
+    int s_read_len; /* Return value for stream read calls. */
 
-    unsigned char read_completed;
+    uint8_t read_completed;
 
     /* Aliases for frequently used elements. */
     zidx_compressed_stream *stream = index->compressed_stream;
-    unsigned char *cmp_buf         = index->compressed_data_buffer;
+    uint8_t *cmp_buf               = index->compressed_data_buffer;
     int cmp_buf_len                = index->compressed_data_buffer_size;
     z_stream *zs                   = index->z_stream;
 
@@ -316,12 +316,12 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
      * an invalid state. Must be handled. */
     int z_ret;
     int f_ret;
-    size_t r_ret;
-    unsigned char byte;
+    int r_ret;
+    uint8_t byte;
     zidx_checkpoint *checkpoint;
     int checkpoint_idx;
     off_t num_bytes_remaining;
-    size_t num_bytes_next;
+    int num_bytes_next;
 
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
@@ -413,7 +413,7 @@ int zidx_create_checkpoint(zidx_index* index,
     if (offset == NULL) return -3;
 
     if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = (unsigned char *)
+        new_checkpoint->window_data = (uint8_t *)
                                           malloc(index->window_size);
     }
 
@@ -496,7 +496,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     #undef ZIDX_OFFSET_
 }
 
-int zidx_extend_index_size(zidx_index* index, size_t nmembers)
+int zidx_extend_index_size(zidx_index* index, int nmembers)
 {
     zidx_checkpoint *new_list;
 
@@ -581,13 +581,13 @@ int zidx_index_file_init(zidx_index_stream *stream, FILE *file)
     return 0;
 }
 
-size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes)
+int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes)
 {
     return fread(buffer, 1, nbytes, (FILE*) file);
 }
 
-size_t zidx_raw_file_write(void *file, const unsigned char *buffer,
-                           size_t nbytes)
+int zidx_raw_file_write(void *file, const uint8_t *buffer,
+                        int nbytes)
 {
     return fwrite(buffer, 1, nbytes, (FILE*) file);
 }

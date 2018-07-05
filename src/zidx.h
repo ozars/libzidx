@@ -7,7 +7,7 @@
 
 #include <stdio.h>     // FILE*
 #include <stdint.h>
-#include <sys/types.h> // off_t, size_t, ssize_t
+#include <sys/types.h> // off_t
 
 #define ZIDX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
 #define ZIDX_DEFAULT_WINDOW_SIZE                 (32768)
@@ -46,8 +46,8 @@ typedef struct z_stream_s z_stream;
  * \return Number of bytes successfully read.
  */
 typedef
-size_t (*zidx_stream_read_callback)(void *stream_context, unsigned char *buffer,
-                                    size_t nbytes);
+int (*zidx_stream_read_callback)(void *stream_context, uint8_t *buffer,
+                                 int nbytes);
 
 /**
  * Callback type to write to a stream.
@@ -60,9 +60,9 @@ size_t (*zidx_stream_read_callback)(void *stream_context, unsigned char *buffer,
  * \return Less than \p nbytes on error.
  */
 typedef
-size_t (*zidx_stream_write_callback)(void *stream_context,
-                                     const unsigned char *buffer,
-                                     size_t nbytes);
+int (*zidx_stream_write_callback)(void *stream_context,
+                                  const uint8_t *buffer,
+                                  int nbytes);
 
 /**
  * Callback type to seek to an offset in a stream.
@@ -170,14 +170,14 @@ typedef struct zidx_checkpoint_offset
 {
     off_t uncompressed_offset;
     off_t compressed_offset;
-    unsigned char compressed_offset_bits;
+    uint8_t compressed_offset_bits;
 } zidx_checkpoint_offset;
 
 typedef struct zidx_checkpoint
 {
     zidx_checkpoint_offset offset;
     uint32_t checksum;
-    unsigned char *window_data;
+    uint8_t *window_data;
 } zidx_checkpoint;
 
 typedef enum zidx_stream_state
@@ -212,11 +212,11 @@ typedef struct zidx_index
     int list_capacity;
     zidx_checkpoint *list;
     zidx_checksum_option checksum_option;
-    int window_size;
-    unsigned char *compressed_data_buffer;
-    size_t compressed_data_buffer_size;
-    unsigned char *seeking_data_buffer;
-    size_t seeking_data_buffer_size;
+    unsigned int window_size;
+    uint8_t *compressed_data_buffer;
+    int compressed_data_buffer_size;
+    uint8_t *seeking_data_buffer;
+    int seeking_data_buffer_size;
     int err_code;
     int err_detail_code;
     char z_stream_initialized;
@@ -237,13 +237,13 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
-                             int window_size,
-                             size_t compressed_data_buffer_size,
-                             size_t seeking_data_buffer_size);
+                             unsigned int window_size,
+                             int compressed_data_buffer_size,
+                             int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
-size_t zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
-size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
-                       size_t nbytes, zidx_block_callback block_callback,
+int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes);
+int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
+                       int nbytes, zidx_block_callback block_callback,
                        void *callback_context);
 int zidx_error(zidx_index* index);
 int zidx_eof(zidx_index* index);
@@ -265,7 +265,7 @@ int zidx_create_checkpoint(zidx_index* index,
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 
-int zidx_extend_index_size(zidx_index* index, size_t nmembers);
+int zidx_extend_index_size(zidx_index* index, int nmembers);
 void zidx_shrink_index_size(zidx_index* index);
 
 /* index import/export functions */
@@ -297,9 +297,8 @@ int zidx_export(zidx_index *index, FILE* output_index_file);
 
 int zidx_compressed_file_init(zidx_compressed_stream *stream, FILE *f);
 int zidx_index_file_init(zidx_index_stream *stream, FILE *f);
-size_t zidx_raw_file_read(void *file, unsigned char *buffer, size_t nbytes);
-size_t zidx_raw_file_write(void *file, const unsigned char *buffer,
-                           size_t nbytes);
+int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes);
+int zidx_raw_file_write(void *file, const uint8_t *buffer, int nbytes);
 int zidx_raw_file_seek(void *file, off_t offset, int whence);
 off_t zidx_raw_file_tell(void *file);
 int zidx_raw_file_eof(void *file);
