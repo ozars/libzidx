@@ -244,6 +244,8 @@ size_t zidx_read(zidx_index* index, unsigned char *buffer, size_t nbytes);
 size_t zidx_read_advanced(zidx_index* index, unsigned char *buffer,
                        size_t nbytes, zidx_block_callback block_callback,
                        void *callback_context);
+int zidx_error(zidx_index* index);
+int zidx_eof(zidx_index* index);
 int zidx_seek(zidx_index* index, off_t offset, int whence);
 int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                        zidx_block_callback block_callback,
