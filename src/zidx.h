@@ -44,7 +44,6 @@ typedef struct z_stream_s z_stream;
  * \param nbytes         Number of bytes to read.
  *
  * \return Number of bytes successfully read.
- * \return Less than \p nbytes on error.
  */
 typedef
 size_t (*zidx_stream_read_callback)(void *stream_context, unsigned char *buffer,
@@ -95,9 +94,7 @@ off_t (*zidx_stream_tell_callback)(void *stream_context);
  *
  * \param stream_context Pointer to user-defined stream data.
  *
- * \return Positive value if end-of-file is reached.
- * \return Zero if end-of-file is not reached.
- * \return Negative value on error.
+ * \return Nonzero value if end-of-file is reached.
  */
 typedef
 int (*zidx_stream_eof_callback)(void *stream_context);
