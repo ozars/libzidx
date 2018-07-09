@@ -316,7 +316,6 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
      * an invalid state. Must be handled. */
     int z_ret;
     int f_ret;
-    int r_ret;
     uint8_t byte;
     zidx_checkpoint *checkpoint;
     int checkpoint_idx;
@@ -384,11 +383,10 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
             (num_bytes_remaining > index->seeking_data_buffer_size ?
                 index->seeking_data_buffer_size :
                 num_bytes_remaining);
-        r_ret = zidx_read_advanced(index, index->seeking_data_buffer,
+        f_ret = zidx_read_advanced(index, index->seeking_data_buffer,
                                    num_bytes_next, block_callback,
                                    callback_context);
-        if (zidx_error(index) >= 0)
-        if (f_ret < 0) return -8;
+        if (zidx_error(index) >= 0) return -8;
     }
 
     return 0;
