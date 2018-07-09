@@ -384,7 +384,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         f_ret = zidx_read_advanced(index, index->seeking_data_buffer,
                                    num_bytes_next, block_callback,
                                    callback_context);
-        if (zidx_error(index) >= 0) return -8;
+        if(f_ret < 0) return -8;
     }
 
     return 0;
