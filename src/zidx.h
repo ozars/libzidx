@@ -217,8 +217,6 @@ typedef struct zidx_index
     int compressed_data_buffer_size;
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
-    int err_code;
-    int err_detail_code;
     char z_stream_initialized;
     /* TODO: Add corrupted flag to check if state is corrupted. */
 } zidx_index;
