@@ -137,7 +137,7 @@ off_t (*zidx_stream_length_callback)(void *stream_context);
  *
  * Currently only reading is supported.
  */
-typedef struct zidx_cmp_stream
+typedef struct zidx_comp_stream
 {
     zidx_stream_read_callback   read;
     zidx_stream_seek_callback   seek;
@@ -146,7 +146,7 @@ typedef struct zidx_cmp_stream
     zidx_stream_error_callback  error;
     zidx_stream_length_callback length;
     void *context;
-} zidx_cmp_stream;
+} zidx_comp_stream;
 
 /**
  * Layout for a gzip index stream.
@@ -168,9 +168,9 @@ typedef struct zidx_index_stream
 
 typedef struct zidx_checkpoint_offset
 {
-    off_t uncmp;
-    off_t cmp;
-    uint8_t cmp_bits;
+    off_t uncomp;
+    off_t comp;
+    uint8_t comp_bits;
 } zidx_checkpoint_offset;
 
 typedef struct zidx_checkpoint
@@ -203,7 +203,7 @@ typedef enum zidx_checksum_option
 
 typedef struct zidx_index
 {
-    zidx_cmp_stream *cmp_stream;
+    zidx_comp_stream *comp_stream;
     zidx_stream_state stream_state;
     zidx_stream_type stream_type;
     zidx_checkpoint_offset offset;
@@ -213,8 +213,8 @@ typedef struct zidx_index
     zidx_checkpoint *list;
     zidx_checksum_option checksum_option;
     unsigned int window_size;
-    uint8_t *cmp_data_buffer;
-    int cmp_data_buffer_size;
+    uint8_t *comp_data_buffer;
+    int comp_data_buffer_size;
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
     char z_stream_initialized;
@@ -229,14 +229,14 @@ int (*zidx_block_callback)(void *context,
                            zidx_checkpoint_offset *offset);
 
 int zidx_index_init(zidx_index* index,
-                    zidx_cmp_stream* cmp_stream);
+                    zidx_comp_stream* comp_stream);
 int zidx_index_init_advanced(zidx_index* index,
-                             zidx_cmp_stream* cmp_stream,
+                             zidx_comp_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr, int initial_capacity,
                              unsigned int window_size,
-                             int cmp_data_buffer_size,
+                             int comp_data_buffer_size,
                              int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes);
@@ -293,7 +293,7 @@ int zidx_export(zidx_index *index, FILE* output_index_file);
 
 /* raw file callbacks */
 
-int zidx_cmp_file_init(zidx_cmp_stream *stream, FILE *f);
+int zidx_comp_file_init(zidx_comp_stream *stream, FILE *f);
 int zidx_index_file_init(zidx_index_stream *stream, FILE *f);
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes);
 int zidx_raw_file_write(void *file, const uint8_t *buffer, int nbytes);
