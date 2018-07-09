@@ -168,9 +168,9 @@ typedef struct zidx_index_stream
 
 typedef struct zidx_checkpoint_offset
 {
-    off_t uncmp_offset;
-    off_t cmp_offset;
-    uint8_t cmp_offset_bits;
+    off_t uncmp;
+    off_t cmp;
+    uint8_t cmp_bits;
 } zidx_checkpoint_offset;
 
 typedef struct zidx_checkpoint

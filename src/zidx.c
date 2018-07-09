@@ -46,9 +46,9 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     cmp_bytes_inflated = zs->avail_in - available_cmp_bytes;
     uncmp_bytes_inflated = zs->avail_out - available_uncmp_bytes;
 
-    index->offset.cmp_offset += cmp_bytes_inflated;
-    index->offset.uncmp_offset += uncmp_bytes_inflated;
-    index->offset.cmp_offset_bits = get_unused_bits_count(zs);
+    index->offset.cmp += cmp_bytes_inflated;
+    index->offset.uncmp += uncmp_bytes_inflated;
+    index->offset.cmp_bits = get_unused_bits_count(zs);
 
     return Z_OK;
 }
@@ -127,9 +127,9 @@ int zidx_index_init_advanced(zidx_index* index,
     index->seeking_data_buffer_size    = seeking_data_buffer_size;
 
     index->cmp_stream             = cmp_stream;
-    index->offset.cmp_offset      = 0;
-    index->offset.cmp_offset_bits = 0;
-    index->offset.uncmp_offset    = 0;
+    index->offset.cmp      = 0;
+    index->offset.cmp_bits = 0;
+    index->offset.uncmp    = 0;
     index->z_stream                      = z_stream_ptr;
     index->stream_type                   = stream_type;
     index->stream_state                  = ZIDX_EXPECT_FILE_HEADERS;
@@ -333,25 +333,25 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         if (f_ret < 0) return -2;
 
         index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
-        index->offset.cmp_offset = 0;
-        index->offset.cmp_offset_bits = 0;
-        index->offset.uncmp_offset = 0;
+        index->offset.cmp = 0;
+        index->offset.cmp_bits = 0;
+        index->offset.uncmp = 0;
     } else if (
-            index->offset.cmp_offset < checkpoint->offset.cmp_offset
-            || index->offset.cmp_offset > offset) {
+            index->offset.cmp < checkpoint->offset.cmp
+            || index->offset.cmp > offset) {
         /* TODO: Fix window size */
         z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -3;
 
         f_ret = index->cmp_stream->seek(
                                     index->cmp_stream->context,
-                                    checkpoint->offset.cmp_offset -
-                                    (checkpoint->offset.cmp_offset_bits > 0
+                                    checkpoint->offset.cmp -
+                                    (checkpoint->offset.cmp_bits > 0
                                             ? 1 : 0),
                                     ZIDX_SEEK_SET);
         if (f_ret < 0) return -4;
 
-        if (checkpoint->offset.cmp_offset_bits > 0) {
+        if (checkpoint->offset.cmp_bits > 0) {
             f_ret = index->cmp_stream->read(
                                             index->cmp_stream->context,
                                             &byte, 1);
@@ -360,10 +360,10 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
 
             /* TODO: Check eof & error */
 
-            byte >>= (8 - checkpoint->offset.cmp_offset_bits);
+            byte >>= (8 - checkpoint->offset.cmp_bits);
 
             z_ret = inflatePrime(index->z_stream,
-                                 checkpoint->offset.cmp_offset_bits, byte);
+                                 checkpoint->offset.cmp_bits, byte);
             if (z_ret != Z_OK) return -6;
         }
 
@@ -372,12 +372,12 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         if (z_ret != Z_OK) return -7;
 
         index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
-        index->offset.cmp_offset = checkpoint->offset.cmp_offset;
-        index->offset.cmp_offset_bits = checkpoint->offset.cmp_offset_bits;
-        index->offset.uncmp_offset = checkpoint->offset.cmp_offset;
+        index->offset.cmp = checkpoint->offset.cmp;
+        index->offset.cmp_bits = checkpoint->offset.cmp_bits;
+        index->offset.uncmp = checkpoint->offset.cmp;
     }
 
-    num_bytes_remaining = offset - index->offset.uncmp_offset;
+    num_bytes_remaining = offset - index->offset.uncmp;
     while(num_bytes_remaining > 0) {
         num_bytes_next =
             (num_bytes_remaining > index->seeking_data_buffer_size ?
@@ -433,9 +433,8 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         zidx_extend_index_size(index, index->list_count);
     }
 
-    int last_uncmp_offset = index->list[index->list_count - 1].offset
-                                .uncmp_offset;
-    if (checkpoint->offset.uncmp_offset <= last_uncmp_offset) {
+    int last_uncmp = index->list[index->list_count - 1].offset.uncmp;
+    if (checkpoint->offset.uncmp <= last_uncmp) {
         return -3;
     }
 
@@ -447,7 +446,7 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 
 int zidx_get_checkpoint(zidx_index* index, off_t offset)
 {
-    #define ZIDX_OFFSET_(idx) (index->list[idx].offset.uncmp_offset)
+    #define ZIDX_OFFSET_(idx) (index->list[idx].offset.uncmp)
 
     /* Variables used for binary search. */
     int left, right;
