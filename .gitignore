@@ -2,7 +2,9 @@
 tests/
 
 bin/
+lib/
 doc/
+build/
 
 # VIM files
 *.swp
