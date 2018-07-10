@@ -43,8 +43,8 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     z_ret = inflate(zs, flush);
     if(z_ret != Z_OK) return z_ret;
 
-    comp_bytes_inflated = zs->avail_in - available_comp_bytes;
-    uncomp_bytes_inflated = zs->avail_out - available_uncomp_bytes;
+    comp_bytes_inflated =  available_comp_bytes - zs->avail_in;
+    uncomp_bytes_inflated = available_uncomp_bytes - zs->avail_out;
 
     index->offset.comp += comp_bytes_inflated;
     index->offset.uncomp += uncomp_bytes_inflated;
