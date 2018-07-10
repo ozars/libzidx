@@ -5,7 +5,6 @@ AC_PREREQ([2.69])
 AC_INIT([libzidx], [0.1], [omerfaruko@gmail.com])
 AC_CONFIG_SRCDIR([src/zidx.h])
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_AUX_DIR([build-aux])
 
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 
