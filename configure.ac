@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([libzidx], [0.1], [omerfaruko@gmail.com])
+AC_INIT([libzidx], [0.1], [omerfaruko AT gmail.com])
 AC_CONFIG_SRCDIR([src/zidx.h])
 AC_CONFIG_HEADERS([config.h])
 
@@ -16,6 +16,7 @@ AM_PROG_AR
 
 # Checks for libraries.
 AC_CHECK_LIB([z], [inflate])
+PKG_CHECK_MODULES([CHECK], [check >= 0.9.6])
 
 # Checks for header files.
 AC_CHECK_HEADERS([limits.h stdint.h stdlib.h string.h])
@@ -32,5 +33,6 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 
 AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+                 src/Makefile
+                 tests/Makefile])
 AC_OUTPUT
