@@ -25,7 +25,7 @@ mkdir "$TEST_EXT_DIR" || TEST_EXT_DIR_CREATED=1
 if [ $TEST_EXT_DIR_CREATED -eq 1 ]; then
     cd "$TEST_EXT_DIR"
     git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
-    git clone https://github.com/imneme/pcg-c
+    git clone https://github.com/ozars/pcg-c
 fi
 
 # Install check
