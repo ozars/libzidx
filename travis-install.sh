@@ -2,9 +2,13 @@
 
 LIBCHECK_TAG = 0.12.0
 
-if [ -z "$1" ]; then
-    >&2 echo "The directory for required external libraries for testing is not given."
-    exit 1
+if [ -z "$TEST_EXT_DIR" ]; then
+    if [ -n "$1" ]; then
+        TEST_EXT_DIR=$1
+    else
+        >&2 echo "The directory for required external libraries for testing is not given."
+        exit 1
+    fi
 fi
 
 # Install build tools

@@ -1,13 +1,14 @@
 language: C
 env:
     global:
-        - TEST_EXT=test_ext
+        - TEST_EXT_DIR=test_ext
+sudo: required
 cache:
     - ccache
     - directories:
-        - $TEST_EXT
+        - $TEST_EXT_DIR
 install:
-    - ./travis-install.sh "$TEST_EXT"
+    - ./travis-install.sh "$TEST_EXT_DIR"
 script:
     - autoreconf -vfi
     - ./configure
