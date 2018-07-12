@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -x
 
 LIBCHECK_TAG=0.12.0
 
