@@ -11,6 +11,11 @@ if [ -z "$TEST_EXT_DIR" ]; then
     fi
 fi
 
+case $TEST_EXT_DIR in
+    /*) : ;; # Do nothing
+    *)  TEST_EXT_DIR=`pwd`/$TEST_EXT_DIR ;;
+esac
+
 # Install build tools
 sudo apt-get update
 sudo apt-get install -y autoconf texinfo
