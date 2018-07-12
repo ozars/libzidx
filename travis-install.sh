@@ -1,6 +1,6 @@
 #!/bin/sh
 
-LIBCHECK_TAG = 0.12.0
+LIBCHECK_TAG=0.12.0
 
 if [ -z "$TEST_EXT_DIR" ]; then
     if [ -n "$1" ]; then
