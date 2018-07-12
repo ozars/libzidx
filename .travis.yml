@@ -1,12 +1,13 @@
 language: C
-before_script:
+before_install:
     - sudo apt-get update
+install:
     - sudo apt-get install -y autoconf texinfo
     - git clone https://github.com/libcheck/check &&
       cd check &&
       autoreconf --install &&
       ./configure &&
       make &&
-      sudo make install &&
-      ldconfig
+      sudo make install
+    - sudo ldconfig
 script: autoreconf --install && ./configure && make && make check
