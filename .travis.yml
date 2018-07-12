@@ -1,0 +1,6 @@
+language: C
+before_script:
+    - git clone https://github.com/libcheck/check && cd check && \
+      autoreconf --install && ./configure && make && sudo make install && \
+      ldconfig
+script: autoreconf --install && ./configure && make && make check
