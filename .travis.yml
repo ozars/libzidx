@@ -7,7 +7,7 @@ cache:
     - directories:
         - $TEST_EXT
 install:
-    - ./travis-test.sh "$TEST_EXT"
+    - ./travis-install.sh "$TEST_EXT"
 script:
     - autoreconf -vfi
     - ./configure
