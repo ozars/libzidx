@@ -1,7 +1,7 @@
-TESTS = check_stream_api
+TESTS = check_libzidx
 
-check_PROGRAMS = check_stream_api
-check_stream_api_SOURCES = check_stream_api.c utils.c utils.h $(top_builddir)/src/zidx.h
-check_stream_api_CFLAGS = @CHECK_CFLAGS@ -I../src/
-check_stream_api_LDADD = $(top_builddir)/src/libzidx.a @CHECK_LIBS@
-check_stream_api_LDFLAGS = -lz -lpcg_random
+check_PROGRAMS = check_libzidx
+check_libzidx_SOURCES = check_libzidx.c utils.c utils.h $(top_builddir)/src/zidx.h
+check_libzidx_CFLAGS = @CHECK_CFLAGS@ -I../src/
+check_libzidx_LDADD = $(top_builddir)/src/libzidx.a @CHECK_LIBS@
+check_libzidx_LDFLAGS = -lz -lpcg_random
