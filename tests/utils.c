@@ -28,7 +28,7 @@ uint32_t get_random_int()
 uint8_t get_random_byte()
 {
     static int remaining = 0;
-    static int rndi;
+    static uint32_t rndi;
     if (remaining == 0) {
         rndi = get_random_int();
         remaining = sizeof(rndi);
