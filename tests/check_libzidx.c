@@ -114,7 +114,37 @@ void teardown_core()
 
 START_TEST(test_comp_file_read)
 {
+    int zx_ret;
     uint8_t buffer[1024];
+    uint8_t next_byte;
+    int file_completed;
+    int i;
+    long offset;
+
+    initialize_srandom(ZX_TEST_RANDOM_SEED);
+
+    offset = 0;
+    file_completed = 0;
+    while(!file_completed)
+    {
+        zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
+
+        if(zx_ret == 0) {
+            file_completed = 1;
+        } else {
+            for(i = 0; i < zx_ret; i++)
+            {
+                next_byte = get_random_byte();
+                ck_assert_msg(buffer[i] == next_byte,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, next_byte, next_byte, buffer[i],
+                              buffer[i]);
+                offset++;
+            }
+        }
+    }
 }
 END_TEST
 
