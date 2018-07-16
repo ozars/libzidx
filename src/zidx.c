@@ -322,6 +322,8 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     off_t num_bytes_remaining;
     int num_bytes_next;
 
+    /* TODO: Implement whence */
+
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
 
