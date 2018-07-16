@@ -16,6 +16,7 @@
 
 const char *comp_file_path;
 zidx_comp_stream *comp_stream;
+zidx_index *index;
 
 void unchecked_setup()
 {
@@ -33,9 +34,11 @@ void unchecked_teardown()
                                           "file.");
 }
 
-void setup()
+/* Stream API tests */
+
+void setup_stream_api()
 {
-    int zidx_ret;
+    int zx_ret;
     FILE *f;
     const char *msg;
 
@@ -51,8 +54,8 @@ void setup()
         goto fail;
     }
 
-    zidx_ret = zidx_comp_file_init(comp_stream, f);
-    if (zidx_ret != 0) {
+    zx_ret = zidx_comp_file_init(comp_stream, f);
+    if (zx_ret != 0) {
         msg = "Couldn't initialize zidx file stream.";
         goto fail;
     }
@@ -62,19 +65,22 @@ void setup()
 fail:
     if (f) fclose(f);
     free(comp_stream);
+    comp_stream = NULL;
     ck_abort_msg(msg);
 }
 
-void teardown()
+void teardown_stream_api()
 {
     FILE *f;
 
     f = comp_stream->context;
 
     free(comp_stream);
+    comp_stream = NULL;
 
     ck_assert_msg(fclose(f) == 0, "File couldn't be closed.");
 }
+
 
 START_TEST(test_comp_file_init)
 {
@@ -88,24 +94,78 @@ START_TEST(test_comp_file_init)
 }
 END_TEST
 
+/* Core tests */
+
+void setup_core()
+{
+    const char *msg = NULL;
+    int zx_ret;
+
+    setup_stream_api();
+
+    index = malloc(sizeof(zidx_index));
+    if (index == NULL) {
+        msg = "Couldn't allocate space for index.";
+        goto fail;
+    }
+
+    zx_ret = zidx_index_init(index, comp_stream);
+    if (zx_ret != 0) {
+        msg = "Couldn't initialize zidx index.";
+        goto fail;
+    }
+
+    return;
+
+fail:
+    free(index);
+    index = NULL;
+    teardown_stream_api();
+    ck_abort_msg(msg);
+}
+
+void teardown_core()
+{
+    int zx_ret;
+
+    zx_ret = zidx_index_destroy(index);
+
+    ck_assert_msg(zx_ret == 0, "Couldn't destroy zidx index.");
+
+    teardown_stream_api();
+}
+
 START_TEST(test_comp_file_read)
 {
+    uint8_t buffer[1024];
 }
 END_TEST
 
 Suite* libzidx_test_suite()
 {
     Suite *s;
+    TCase *tc_stream_api;
     TCase *tc_core;
 
     s = suite_create("libzidx");
 
+    tc_stream_api = tcase_create("Stream API");
+
+    tcase_add_unchecked_fixture(tc_stream_api, unchecked_setup,
+                                unchecked_teardown);
+    tcase_add_checked_fixture(tc_stream_api, setup_stream_api,
+                              teardown_stream_api);
+
+    tcase_add_test(tc_stream_api, test_comp_file_init);
+
+    suite_add_tcase(s, tc_stream_api);
+
+
     tc_core = tcase_create("Core");
 
     tcase_add_unchecked_fixture(tc_core, unchecked_setup, unchecked_teardown);
-    tcase_add_checked_fixture(tc_core, setup, teardown);
+    tcase_add_checked_fixture(tc_core, setup_core, teardown_core);
 
-    tcase_add_test(tc_core, test_comp_file_init);
     tcase_add_test(tc_core, test_comp_file_read);
 
     suite_add_tcase(s, tc_core);
