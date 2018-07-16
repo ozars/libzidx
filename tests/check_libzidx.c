@@ -6,21 +6,26 @@
 #include "utils.h"
 #include "zidx.h"
 
-#ifndef RANDOM_SEED
-#define RANDOM_SEED (0UL)
+#ifndef ZX_TEST_RANDOM_SEED
+#define ZX_TEST_RANDOM_SEED (0UL)
 #endif
 
-#ifndef COMP_FILE_LENGTH
-#define COMP_FILE_LENGTH (100 * (1 << 20))
+#ifndef ZX_TEST_COMP_FILE_LENGTH
+#define ZX_TEST_COMP_FILE_LENGTH (10 * (1 << 20))
+#endif
+
+#ifndef ZX_TEST_LONG_TIMEOUT
+#define ZX_TEST_LONG_TIMEOUT (30)
 #endif
 
 const char *comp_file_path;
 zidx_comp_stream *comp_stream;
-zidx_index *index;
+zidx_index *zx_index;
 
 void unchecked_setup()
 {
-    comp_file_path = get_random_compressed_file(RANDOM_SEED, COMP_FILE_LENGTH);
+    comp_file_path = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
+                                                ZX_TEST_COMP_FILE_LENGTH);
 
     ck_assert_msg(comp_file_path, "Couldn't create temporary compressed file.");
 }
@@ -43,30 +48,14 @@ void setup_stream_api()
     const char *msg;
 
     f = fopen(comp_file_path, "rb");
-    if (f == NULL) {
-        msg = "Couldn't open compressed file.";
-        goto fail;
-    }
+    ck_assert_msg(f, "Couldn't open compressed file.");
 
     comp_stream = malloc(sizeof(zidx_comp_stream));
-    if (comp_stream == NULL) {
-        msg = "Couldn't allocate space form zidx compressed stream.";
-        goto fail;
-    }
+    ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
+                               "stream.");
 
     zx_ret = zidx_comp_file_init(comp_stream, f);
-    if (zx_ret != 0) {
-        msg = "Couldn't initialize zidx file stream.";
-        goto fail;
-    }
-
-    return;
-
-fail:
-    if (f) fclose(f);
-    free(comp_stream);
-    comp_stream = NULL;
-    ck_abort_msg(msg);
+    ck_assert_msg(zx_ret == 0, "Couldn't initialize zidx file stream.");
 }
 
 void teardown_stream_api()
@@ -103,34 +92,22 @@ void setup_core()
 
     setup_stream_api();
 
-    index = malloc(sizeof(zidx_index));
-    if (index == NULL) {
-        msg = "Couldn't allocate space for index.";
-        goto fail;
-    }
+    zx_index = malloc(sizeof(zidx_index));
+    ck_assert_msg(zx_index, "Couldn't allocate space for index.");
 
-    zx_ret = zidx_index_init(index, comp_stream);
-    if (zx_ret != 0) {
-        msg = "Couldn't initialize zidx index.";
-        goto fail;
-    }
-
-    return;
-
-fail:
-    free(index);
-    index = NULL;
-    teardown_stream_api();
-    ck_abort_msg(msg);
+    zx_ret = zidx_index_init(zx_index, comp_stream);
+    ck_assert_msg(zx_ret == 0, "Couldn't initialize zidx index.");
 }
 
 void teardown_core()
 {
     int zx_ret;
 
-    zx_ret = zidx_index_destroy(index);
-
+    zx_ret = zidx_index_destroy(zx_index);
     ck_assert_msg(zx_ret == 0, "Couldn't destroy zidx index.");
+
+    free(zx_index);
+    zx_index = NULL;
 
     teardown_stream_api();
 }
@@ -149,6 +126,7 @@ Suite* libzidx_test_suite()
 
     s = suite_create("libzidx");
 
+    /* Stream API test cases. */
     tc_stream_api = tcase_create("Stream API");
 
     tcase_add_unchecked_fixture(tc_stream_api, unchecked_setup,
@@ -160,8 +138,11 @@ Suite* libzidx_test_suite()
 
     suite_add_tcase(s, tc_stream_api);
 
-
+    /* Core test cases. */
     tc_core = tcase_create("Core");
+
+    /* They can be a bit long. */
+    tcase_set_timeout(tc_core, ZX_TEST_LONG_TIMEOUT);
 
     tcase_add_unchecked_fixture(tc_core, unchecked_setup, unchecked_teardown);
     tcase_add_checked_fixture(tc_core, setup_core, teardown_core);
@@ -182,7 +163,7 @@ int main()
     s = libzidx_test_suite();
     sr = srunner_create(s);
 
-    srunner_run_all(sr, CK_VERBOSE);
+    srunner_run_all(sr, CK_NORMAL);
 
     number_failed = srunner_ntests_failed(sr);
     srunner_free(sr);
