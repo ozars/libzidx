@@ -11,6 +11,15 @@ void initialize_srandom(uint64_t seed)
     pcg32_srandom(seed, seed);
 }
 
+void initialize_srandom2(uint64_t seed, uint64_t skip)
+{
+    int i;
+    pcg32_srandom(seed, skip / 4);
+    for (i = 0; i < skip % 4; i++) {
+        get_random_byte();
+    }
+}
+
 uint32_t get_random_int()
 {
     return pcg32_random();
