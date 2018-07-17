@@ -226,7 +226,8 @@ typedef struct zidx_index
 typedef
 int (*zidx_block_callback)(void *context,
                            zidx_index *index,
-                           zidx_checkpoint_offset *offset);
+                           zidx_checkpoint_offset *offset,
+                           int is_last_block);
 
 int zidx_index_init(zidx_index* index,
                     zidx_comp_stream* comp_stream);
