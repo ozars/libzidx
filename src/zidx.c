@@ -16,7 +16,7 @@ extern "C" {
 
 static uint8_t get_unused_bits_count(z_stream* zs)
 {
-    return zs->data_type % 64;
+    return zs->data_type & 7;
 }
 
 static int is_last_deflate_block(z_stream* zs)
