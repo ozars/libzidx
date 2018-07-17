@@ -129,16 +129,13 @@ START_TEST(test_comp_file_read)
     int i;
     long offset;
 
-    initialize_srandom(ZX_TEST_RANDOM_SEED);
-
     offset = 0;
     file_completed = 0;
-    while(!file_completed)
-    {
+    while (!file_completed) {
         zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
         ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
 
-        if(zx_ret == 0) {
+        if (zx_ret == 0) {
             file_completed = 1;
         } else {
             for(i = 0; i < zx_ret; i++)
