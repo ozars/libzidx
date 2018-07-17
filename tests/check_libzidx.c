@@ -153,6 +153,58 @@ START_TEST(test_comp_file_read)
 }
 END_TEST
 
+int comp_file_seek_callback(void *context,
+                            zidx_index *index,
+                            zidx_checkpoint_offset *offset,
+                            int last_block)
+{
+    int *num_blocks = (int*) context;
+
+    if (!last_block) {
+        num_blocks++;
+    }
+
+    printf("%ld:%d %ld %d\n", offset->comp,
+                              offset->comp_bits,
+                              offset->uncomp,
+                              last_block);
+
+    return 0;
+}
+
+START_TEST(test_comp_file_seek)
+{
+    int zx_ret;
+    uint8_t buffer[1024];
+    uint8_t next_byte;
+    int file_completed;
+    int i;
+    long offset;
+    int num_blocks = 0;
+
+    offset = 0;
+    file_completed = 0;
+    while (!file_completed) {
+        zx_ret = zidx_read_advanced(zx_index,
+                                    buffer,
+                                    sizeof(buffer),
+                                    comp_file_seek_callback,
+                                    &num_blocks);
+        ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
+
+        if (zx_ret == 0) {
+
+            printf("%ld:%d %ld\n",
+                    zx_index->offset.comp,
+                    zx_index->offset.comp_bits,
+                    zx_index->offset.uncomp);
+            file_completed = 1;
+        }
+    }
+
+}
+END_TEST
+
 Suite* libzidx_test_suite()
 {
     Suite *s;
@@ -183,6 +235,7 @@ Suite* libzidx_test_suite()
     tcase_add_checked_fixture(tc_core, setup_core, teardown_core);
 
     tcase_add_test(tc_core, test_comp_file_read);
+    tcase_add_test(tc_core, test_comp_file_seek);
 
     suite_add_tcase(s, tc_core);
 
