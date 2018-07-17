@@ -21,11 +21,16 @@
 const char *comp_file_path;
 zidx_comp_stream *comp_stream;
 zidx_index *zx_index;
+uint8_t *uncomp_data;
 
 void unchecked_setup()
 {
+    uncomp_data = malloc(ZX_TEST_COMP_FILE_LENGTH);
+    ck_assert_msg(uncomp_data, "Couldn't allocate space for temporary data.");
+
     comp_file_path = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
-                                                ZX_TEST_COMP_FILE_LENGTH);
+                                                ZX_TEST_COMP_FILE_LENGTH,
+                                                uncomp_data);
 
     ck_assert_msg(comp_file_path, "Couldn't create temporary compressed file.");
 }
@@ -37,6 +42,9 @@ void unchecked_teardown()
 
     ck_assert_msg(comp_file_deleted == 0, "Couldn't remove temporary compressed "
                                           "file.");
+
+    free(uncomp_data);
+    uncomp_data = NULL;
 }
 
 /* Stream API tests */
@@ -135,7 +143,7 @@ START_TEST(test_comp_file_read)
         } else {
             for(i = 0; i < zx_ret; i++)
             {
-                next_byte = get_random_byte();
+                next_byte = uncomp_data[offset];
                 ck_assert_msg(buffer[i] == next_byte,
                               "Incorrect data at offset %ld, "
                               "expected %u (0x%02X), got %u (0x%02X).",
