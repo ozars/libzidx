@@ -430,7 +430,7 @@ int zidx_fill_checkpoint(zidx_index* index,
         new_checkpoint->window_data = (uint8_t *) malloc(index->window_size);
     }
 
-    memcpy(&new_checkpoint->offset, offset, sizeof(*offset));
+    memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
 
     z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
                                  &index->window_size);
