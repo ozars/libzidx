@@ -170,7 +170,8 @@ typedef struct zidx_checkpoint_offset
 {
     off_t uncomp;
     off_t comp;
-    uint8_t comp_bits;
+    uint8_t comp_bits_count;
+    uint8_t comp_byte;
 } zidx_checkpoint_offset;
 
 typedef struct zidx_checkpoint

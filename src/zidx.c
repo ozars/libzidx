@@ -48,7 +48,19 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 
     index->offset.comp += comp_bytes_inflated;
     index->offset.uncomp += uncomp_bytes_inflated;
-    index->offset.comp_bits = get_unused_bits_count(zs);
+
+    /* TODO: Remove block boundary check if this is not necessary. */
+    if (is_on_block_boundary(zs)) {
+        index->offset.comp_bits_count = get_unused_bits_count(zs);
+        if (index->offset.comp_bits_count > 0) {
+            index->offset.comp_byte = *(zs->next_in - 1);
+        } else {
+            index->offset.comp_byte = 0;
+        }
+    } else {
+        index->offset.comp_bits_count = 0;
+        index->offset.comp_byte = 0;
+    }
 
     return Z_OK;
 }
