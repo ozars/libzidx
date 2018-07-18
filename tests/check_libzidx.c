@@ -164,10 +164,11 @@ int comp_file_seek_callback(void *context,
         num_blocks++;
     }
 
-    printf("%ld:%d %ld %d\n", offset->comp,
-                              offset->comp_bits,
-                              offset->uncomp,
-                              last_block);
+    printf("%ld:%d (%02x) %ld %d\n", offset->comp,
+                                     offset->comp_bits_count,
+                                     offset->comp_byte,
+                                     offset->uncomp,
+                                     last_block);
 
     return 0;
 }
@@ -193,11 +194,6 @@ START_TEST(test_comp_file_seek)
         ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
 
         if (zx_ret == 0) {
-
-            printf("%ld:%d %ld\n",
-                    zx_index->offset.comp,
-                    zx_index->offset.comp_bits,
-                    zx_index->offset.uncomp);
             file_completed = 1;
         }
     }
