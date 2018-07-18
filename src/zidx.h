@@ -257,9 +257,9 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback block_callback,
                               void *callback_context);
 
-int zidx_create_checkpoint(zidx_index* index,
-                           zidx_checkpoint* new_checkpoint,
-                           zidx_checkpoint_offset* offset);
+int zidx_fill_checkpoint(zidx_index* index,
+                         zidx_checkpoint* new_checkpoint,
+                         zidx_checkpoint_offset* offset);
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint(zidx_index* index, off_t offset);
 

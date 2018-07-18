@@ -409,9 +409,9 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback next_block_callback,
                               void *callback_context);
 
-int zidx_create_checkpoint(zidx_index* index,
-                           zidx_checkpoint* new_checkpoint,
-                           zidx_checkpoint_offset* offset)
+int zidx_fill_checkpoint(zidx_index* index,
+                         zidx_checkpoint* new_checkpoint,
+                         zidx_checkpoint_offset* offset)
 {
     int z_ret;
 
@@ -420,8 +420,7 @@ int zidx_create_checkpoint(zidx_index* index,
     if (offset == NULL) return -3;
 
     if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = (uint8_t *)
-                                          malloc(index->window_size);
+        new_checkpoint->window_data = (uint8_t *) malloc(index->window_size);
     }
 
     memcpy(&new_checkpoint->offset, offset, sizeof(*offset));
