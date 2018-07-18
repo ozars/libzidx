@@ -140,7 +140,8 @@ int zidx_index_init_advanced(zidx_index* index,
 
     index->comp_stream             = comp_stream;
     index->offset.comp      = 0;
-    index->offset.comp_bits = 0;
+    index->offset.comp_bits_count = 0;
+    index->offset.comp_byte = 0;
     index->offset.uncomp    = 0;
     index->z_stream                      = z_stream_ptr;
     index->stream_type                   = stream_type;
@@ -349,7 +350,8 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
 
         index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
         index->offset.comp = 0;
-        index->offset.comp_bits = 0;
+        index->offset.comp_byte = 0;
+        index->offset.comp_bits_count = 0;
         index->offset.uncomp = 0;
     } else if (
             index->offset.comp < checkpoint->offset.comp
@@ -359,24 +361,16 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         if (z_ret != Z_OK) return -3;
 
         f_ret = index->comp_stream->seek(index->comp_stream->context,
-                                         checkpoint->offset.comp -
-                                         (checkpoint->offset.comp_bits > 0
-                                                ? 1 : 0),
+                                         checkpoint->offset.comp,
                                          ZIDX_SEEK_SET);
         if (f_ret < 0) return -4;
 
-        if (checkpoint->offset.comp_bits > 0) {
-            f_ret = index->comp_stream->read(index->comp_stream->context,
-                                             &byte, 1);
-
-            if (f_ret != 1) return -5;
-
-            /* TODO: Check eof & error */
-
-            byte >>= (8 - checkpoint->offset.comp_bits);
+        if (checkpoint->offset.comp_bits_count > 0) {
+            byte = checkpoint->offset.comp_byte;
+            byte >>= (8 - checkpoint->offset.comp_bits_count);
 
             z_ret = inflatePrime(index->z_stream,
-                                 checkpoint->offset.comp_bits, byte);
+                                 checkpoint->offset.comp_bits_count, byte);
             if (z_ret != Z_OK) return -6;
         }
 
@@ -386,8 +380,8 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
 
         index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
         index->offset.comp = checkpoint->offset.comp;
-        index->offset.comp_bits = checkpoint->offset.comp_bits;
-        index->offset.uncomp = checkpoint->offset.comp;
+        index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
+        index->offset.uncomp = checkpoint->offset.uncomp;
     }
 
     num_bytes_remaining = offset - index->offset.uncomp;
