@@ -426,6 +426,7 @@ int zidx_fill_checkpoint(zidx_index* index,
                          zidx_checkpoint_offset* offset)
 {
     int z_ret;
+    unsigned int dict_length;
 
     if (index == NULL) return -1;
     if (new_checkpoint == NULL) return -2;
@@ -437,8 +438,11 @@ int zidx_fill_checkpoint(zidx_index* index,
 
     memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
 
+    /* TODO: Use dict_length to store variable length window_data maybe? */
+    dict_length = index->window_size;
+
     z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
-                                 &index->window_size);
+                                 &dict_length);
     if (z_ret != Z_OK) return -4;
 
     return 0;
