@@ -398,6 +398,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                    num_bytes_next, block_callback,
                                    callback_context);
         if(f_ret < 0) return -8;
+        if(f_ret == 0) return 1;
 
         num_bytes_remaining -= f_ret;
     }
