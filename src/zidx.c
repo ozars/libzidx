@@ -161,12 +161,16 @@ memory_fail:
 
 int zidx_index_destroy(zidx_index* index)
 {
+    int z_ret;
     zidx_checkpoint *it;
-    zidx_checkpoint *end = index->list + index->list_count;
+    zidx_checkpoint *end;
 
     if (!index) return 0;
 
-    free(index->z_stream);
+    end = index->list + index->list_count;
+
+    z_ret = inflateEnd(index->z_stream);
+    if (z_ret != Z_OK) return -1;
 
     for (it = index->list; it < end; it++) {
         free(it->window_data);
