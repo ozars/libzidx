@@ -368,6 +368,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                          checkpoint->offset.comp,
                                          ZIDX_SEEK_SET);
         if (f_ret < 0) return -4;
+        /* TODO: Add stream eof check. */
 
         if (checkpoint->offset.comp_bits_count > 0) {
             byte = checkpoint->offset.comp_byte;
