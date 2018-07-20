@@ -191,11 +191,12 @@ START_TEST(test_comp_file_seek)
     int file_completed;
     int i;
     long offset;
+    long step = 1024;
     int num_blocks = 0;
 
-    offset = 0;
     file_completed = 0;
     while (!file_completed) {
+        /* TODO: Replace this with zidx_build_index */
         zx_ret = zidx_read_advanced(zx_index,
                                     buffer,
                                     sizeof(buffer),
@@ -208,6 +209,36 @@ START_TEST(test_comp_file_seek)
         }
     }
 
+    offset = zx_index->offset.uncomp - step;
+    while (offset > 0) {
+        uint8_t byte;
+        zx_ret = zidx_seek(zx_index, offset, ZIDX_SEEK_SET);
+        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
+
+        zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(zx_ret == 0, "Read returned %d at offset %ld", zx_ret, offset);
+
+        for(i = 0; i < sizeof(buffer); i++)
+        {
+            printf("%02X ", buffer[i]);
+        }
+        printf("...\n");
+        for(i = 0; i < sizeof(buffer); i++)
+        {
+            printf("%02X ", uncomp_data[i]);
+        }
+        printf("...\n");
+
+        fflush(stdout);
+
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, sizeof(buffer)) == 0,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
+                              buffer[i]);
+
+        offset -= step;
+    }
 }
 END_TEST
 
