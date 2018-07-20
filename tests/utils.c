@@ -34,7 +34,7 @@ uint8_t get_random_byte()
         remaining = sizeof(rndi);
     }
     remaining--;
-    return rndi | (0xFF << (8 * remaining));
+    return (rndi >> (8 * remaining)) & 0xFFU;
 }
 
 const char* get_random_compressed_file(uint64_t seed, long length, uint8_t *data)
