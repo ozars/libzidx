@@ -1,8 +1,13 @@
 #include "zidx_stream.h"
 
-int zidx_comp_file_init(zidx_comp_stream *stream, FILE *file)
+#include<stdlib.h>
+
+zidx_comp_stream* zidx_create_comp_file(FILE *file)
 {
-    if(stream == NULL) return -1;
+    zidx_comp_stream *stream;
+
+    stream = (zidx_comp_stream*) malloc(sizeof(zidx_comp_stream));
+    if(stream == NULL) return NULL;
 
     stream->read    = zidx_raw_file_read;
     stream->seek    = zidx_raw_file_seek;
@@ -12,12 +17,15 @@ int zidx_comp_file_init(zidx_comp_stream *stream, FILE *file)
     stream->length  = zidx_raw_file_length;
     stream->context = (void*) file;
 
-    return 0;
+    return stream;
 }
 
-int zidx_index_file_init(zidx_index_stream *stream, FILE *file)
+zidx_index_stream* zidx_create_index_file(FILE *file)
 {
-    if(stream == NULL) return -1;
+    zidx_index_stream *stream;
+
+    stream = (zidx_index_stream*) malloc(sizeof(zidx_index_stream));
+    if(stream == NULL) return NULL;
 
     stream->read    = zidx_raw_file_read;
     stream->write   = zidx_raw_file_write;
@@ -27,7 +35,7 @@ int zidx_index_file_init(zidx_index_stream *stream, FILE *file)
     stream->error   = zidx_raw_file_error;
     stream->context = (void*) file;
 
-    return 0;
+    return stream;
 }
 
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes)

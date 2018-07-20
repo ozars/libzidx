@@ -147,8 +147,8 @@ typedef struct zidx_index_stream
     void *context;
 } zidx_index_stream;
 
-int zidx_comp_file_init(zidx_comp_stream *stream, FILE *f);
-int zidx_index_file_init(zidx_index_stream *stream, FILE *f);
+zidx_comp_stream* zidx_create_comp_file(FILE *f);
+zidx_index_stream* zidx_create_index_file(FILE *f);
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes);
 int zidx_raw_file_write(void *file, const uint8_t *buffer, int nbytes);
 int zidx_raw_file_seek(void *file, off_t offset, int whence);
