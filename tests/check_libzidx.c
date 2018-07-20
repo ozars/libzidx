@@ -159,9 +159,11 @@ int comp_file_seek_callback(void *context,
                             int last_block)
 {
     int *num_blocks = (int*) context;
+    int zx_ret;
+    zidx_checkpoint *ckp;
 
     if (!last_block) {
-        num_blocks++;
+        (*num_blocks)++;
     }
 
     printf("%ld:%d (%02x) %ld %d\n", offset->comp,
@@ -169,6 +171,14 @@ int comp_file_seek_callback(void *context,
                                      offset->comp_byte,
                                      offset->uncomp,
                                      last_block);
+
+    ckp = zidx_create_checkpoint();
+    ck_assert(ckp != NULL);
+    zx_ret = zidx_fill_checkpoint(index, ckp, offset);
+    ck_assert(zx_ret == 0);
+
+    zx_ret = zidx_add_checkpoint(index, ckp);
+    if (zx_ret != 0) return -3;
 
     return 0;
 }
