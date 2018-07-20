@@ -2,8 +2,8 @@
  * \file
  * libzidx API header.
  */
-#ifndef _ZIDX_H_
-#define _ZIDX_H_
+#ifndef ZIDX_H
+#define ZIDX_H
 
 #include <stdio.h>     // FILE*
 #include <stdint.h>
@@ -308,4 +308,4 @@ off_t zidx_raw_file_length(void *file);
 } // extern "C"
 #endif
 
-#endif // _ZIDX_H_
+#endif // ZIDX_H
