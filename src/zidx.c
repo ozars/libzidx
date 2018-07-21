@@ -14,6 +14,14 @@ extern "C" {
 #define ZX_LOG(...) while(0)
 #endif
 
+typedef enum zidx_stream_state
+{
+    ZX_STATE_INVALID,
+    ZX_STATE_FILE_HEADERS,
+    ZX_STATE_DEFLATE_BLOCKS,
+    ZX_STATE_FILE_TRAILER
+} zidx_stream_state;
+
 struct zidx_checkpoint_offset_s
 {
     off_t uncomp;
