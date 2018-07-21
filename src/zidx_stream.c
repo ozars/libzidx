@@ -1,6 +1,16 @@
+#ifndef _POSIX_SOURCE
+# define _POSIX_SOURCE
+#  include<stdio.h>
+# undef _POSIX_SOURCE
+#else
+# include<stdio.h>
+#endif
+
 #include "zidx_stream.h"
 
 #include<stdlib.h>
+#include<sys/types.h>
+#include<sys/stat.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,25 +94,17 @@ int zidx_raw_file_error(void *file)
 
 off_t zidx_raw_file_length(void *file)
 {
-    off_t length;
-    off_t saved_pos;
+    struct stat s;
+    int fd;
+    int ret;
 
-    saved_pos = zidx_raw_file_tell(file);
-    if(saved_pos < 0) goto fail;
+    fd = fileno(file);
+    if (fd == -1) return -1;
 
-    if(zidx_raw_file_seek(file, 0, SEEK_END) < 0) goto cleanup;
+    ret = fstat(fd, &s);
+    if (ret < 0) return -2;
 
-    length = zidx_raw_file_tell(file);
-    if(length < 0) goto cleanup;
-
-    if(zidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
-
-    return length;
-
-cleanup:
-    if(zidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
-fail:
-    return -1;
+    return s.st_size;
 }
 
 #ifdef __cplusplus
