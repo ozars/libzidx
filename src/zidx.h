@@ -33,10 +33,10 @@ typedef struct zidx_checkpoint_offset_s zidx_checkpoint_offset;
 
 typedef enum zidx_stream_state
 {
-    ZX_INVALID_STATE,
-    ZX_EXPECT_FILE_HEADERS,
-    ZX_EXPECT_DEFLATE_BLOCKS,
-    ZX_EXPECT_FILE_TRAILER
+    ZX_STATE_INVALID,
+    ZX_STATE_FILE_HEADERS,
+    ZX_STATE_DEFLATE_BLOCKS,
+    ZX_STATE_FILE_TRAILER
 } zidx_stream_state;
 
 typedef enum zidx_stream_type

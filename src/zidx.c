@@ -179,7 +179,7 @@ int zidx_index_init_advanced(zidx_index* index,
     index->offset.uncomp    = 0;
     index->z_stream                      = z_stream_ptr;
     index->stream_type                   = stream_type;
-    index->stream_state                  = ZX_EXPECT_FILE_HEADERS;
+    index->stream_state                  = ZX_STATE_FILE_HEADERS;
     index->checksum_option               = checksum_option;
     index->z_stream_initialized          = 0;
 
@@ -246,7 +246,7 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
 
     switch (index->stream_state) {
         /* If headers are expected */
-        case ZX_EXPECT_FILE_HEADERS:
+        case ZX_STATE_FILE_HEADERS:
             switch(index->stream_type) {
                 case ZX_STREAM_DEFLATE:
                     ZX_LOG("DEFLATE is being initialized.\n");
@@ -294,11 +294,11 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                     return -6;
             }
 
-            index->stream_state = ZX_EXPECT_DEFLATE_BLOCKS;
+            index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
 
             ZX_LOG("[HEADER] Inflate initialized.\n");
 
-        case ZX_EXPECT_DEFLATE_BLOCKS:
+        case ZX_STATE_DEFLATE_BLOCKS:
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
             read_completed = 0;
@@ -386,7 +386,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                         ZX_SEEK_SET);
         if (f_ret < 0) return -2;
 
-        index->stream_state = ZX_EXPECT_FILE_HEADERS;
+        index->stream_state = ZX_STATE_FILE_HEADERS;
         index->offset.comp = 0;
         index->offset.comp_byte = 0;
         index->offset.comp_bits_count = 0;
@@ -417,7 +417,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                      index->window_size);
         if (z_ret != Z_OK) return -7;
 
-        index->stream_state = ZX_EXPECT_DEFLATE_BLOCKS;
+        index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
         index->offset.comp = checkpoint->offset.comp;
         index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
         index->offset.uncomp = checkpoint->offset.uncomp;
