@@ -27,9 +27,9 @@ typedef struct z_stream_s z_stream;
 
 /* index/checkpoint data types */
 
+typedef struct zidx_index_s zidx_index;
+typedef struct zidx_checkpoint_s zidx_checkpoint;
 typedef struct zidx_checkpoint_offset_s zidx_checkpoint_offset;
-typedef struct zidx_checkpoint_s        zidx_checkpoint;
-typedef struct zidx_index_s             zidx_index;
 
 typedef enum zidx_stream_state
 {
@@ -68,17 +68,22 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_comp_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
-                             z_stream* z_stream_ptr, int initial_capacity,
+                             z_stream* z_stream_ptr,
+                             int initial_capacity,
                              unsigned int window_size,
                              int comp_data_buffer_size,
                              int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes);
-int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
-                       int nbytes, zidx_block_callback block_callback,
+int zidx_read_advanced(zidx_index* index,
+                       uint8_t *buffer,
+                       int nbytes,
+                       zidx_block_callback block_callback,
                        void *callback_context);
 int zidx_seek(zidx_index* index, off_t offset, int whence);
-int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
+int zidx_seek_advanced(zidx_index* index,
+                       off_t offset,
+                       int whence,
                        zidx_block_callback block_callback,
                        void *callback_context);
 off_t zidx_tell(zidx_index* index);
