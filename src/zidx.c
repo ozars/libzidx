@@ -121,6 +121,13 @@ static int initialize_zstream(zidx_index* index, z_stream* zs, int window_bits)
     return z_ret;
 }
 
+zidx_index* zidx_index_create()
+{
+    zidx_index *index;
+    index = (zidx_index*) malloc(sizeof(zidx_index));
+    return index;
+}
+
 int zidx_index_init(zidx_index* index,
                      zidx_comp_stream* comp_stream)
 {

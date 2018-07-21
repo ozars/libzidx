@@ -54,6 +54,7 @@ int (*zidx_block_callback)(void *context,
                            zidx_checkpoint_offset *offset,
                            int is_last_block);
 
+zidx_index* zidx_index_create();
 int zidx_index_init(zidx_index* index,
                     zidx_comp_stream* comp_stream);
 int zidx_index_init_advanced(zidx_index* index,
