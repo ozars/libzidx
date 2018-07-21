@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-zidx_comp_stream* zidx_create_comp_file(FILE *file)
+zidx_comp_stream* zidx_comp_file_create(FILE *file)
 {
     zidx_comp_stream *stream;
 
@@ -34,7 +34,7 @@ zidx_comp_stream* zidx_create_comp_file(FILE *file)
     return stream;
 }
 
-zidx_index_stream* zidx_create_index_file(FILE *file)
+zidx_index_stream* zidx_index_file_create(FILE *file)
 {
     zidx_index_stream *stream;
 
