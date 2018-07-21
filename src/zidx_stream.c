@@ -2,6 +2,10 @@
 
 #include<stdlib.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 zidx_comp_stream* zidx_create_comp_file(FILE *file)
 {
     zidx_comp_stream *stream;
@@ -100,3 +104,7 @@ cleanup:
 fail:
     return -1;
 }
+
+#ifdef __cplusplus
+} // extern "C"
+#endif
