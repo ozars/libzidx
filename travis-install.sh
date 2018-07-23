@@ -21,7 +21,8 @@ sudo apt-get update
 sudo apt-get install -y autoconf texinfo
 
 # Clone libraries needed for test if they are not cached
-mkdir "$TEST_EXT_DIR" || TEST_EXT_DIR_CREATED=1
+TEST_EXT_DIR_CREATED=0
+mkdir "$TEST_EXT_DIR" && TEST_EXT_DIR_CREATED=1
 if [ $TEST_EXT_DIR_CREATED -eq 1 ]; then
     cd "$TEST_EXT_DIR"
     git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
