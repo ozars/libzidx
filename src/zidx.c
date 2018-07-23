@@ -412,6 +412,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         index->offset.comp_byte = 0;
         index->offset.comp_bits_count = 0;
         index->offset.uncomp = 0;
+        index->z_stream->avail_in = 0;
     } else if (
             index->offset.comp < checkpoint->offset.comp
             || index->offset.comp > offset) {
@@ -444,6 +445,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         index->offset.comp = checkpoint->offset.comp;
         index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
         index->offset.uncomp = checkpoint->offset.uncomp;
+        index->z_stream->avail_in = 0;
     }
 
     num_bytes_remaining = offset - index->offset.uncomp;
