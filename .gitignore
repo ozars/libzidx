@@ -2,6 +2,7 @@
 /lib/
 /doc/
 /build/
+/tmp/
 
 # Testing Artifacts
 /tests/check_*
