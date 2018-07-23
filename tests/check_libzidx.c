@@ -4,7 +4,7 @@
 #include<check.h>
 
 #include "utils.h"
-#include "zidx.h"
+#include "zidx.c"
 
 #ifndef ZX_TEST_RANDOM_SEED
 #define ZX_TEST_RANDOM_SEED (0UL)
@@ -62,8 +62,8 @@ void setup_stream_api()
     ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
                                "stream.");
 
-    zx_ret = zidx_comp_file_init(comp_stream, f);
-    ck_assert_msg(zx_ret == 0, "Couldn't initialize zidx file stream.");
+    comp_stream = zidx_comp_file_create(f);
+    ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 }
 
 void teardown_stream_api()
@@ -178,7 +178,7 @@ int comp_file_seek_callback(void *context,
     ck_assert(zx_ret == 0);
 
     zx_ret = zidx_add_checkpoint(index, ckp);
-    if (zx_ret != 0) return -3;
+    ck_assert(zx_ret == 0);
 
     return 0;
 }
@@ -212,7 +212,8 @@ START_TEST(test_comp_file_seek)
     offset = zx_index->offset.uncomp - step;
     while (offset > 0) {
         uint8_t byte;
-        zx_ret = zidx_seek(zx_index, offset, ZIDX_SEEK_SET);
+
+        zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
         ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
 
         zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
