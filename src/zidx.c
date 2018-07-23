@@ -338,9 +338,10 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                         }
                         if (block_callback != NULL) {
                             ZX_LOG("[BLOCKS] Block boundary callback.\n");
-                            (*block_callback)(callback_context,
-                                              index, &index->offset,
-                                              read_completed);
+                            s_ret = (*block_callback)(callback_context,
+                                                      index, &index->offset,
+                                                      read_completed);
+                            if(s_ret != 0) return -100;
                         }
                     }
                     if (zs->avail_out == 0) {
