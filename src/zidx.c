@@ -396,6 +396,8 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
 
     if (checkpoint == NULL) {
+        ZX_LOG("[SEEK] No checkpoint found.\n");
+
         f_ret = index->comp_stream->seek(
                                         index->comp_stream->context,
                                         0,
@@ -410,6 +412,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     } else if (
             index->offset.comp < checkpoint->offset.comp
             || index->offset.comp > offset) {
+        ZX_LOG("[SEEK] Checkpoint found.\n");
         /* TODO: Fix window size */
         z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -3;
