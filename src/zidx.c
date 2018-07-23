@@ -437,6 +437,8 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         index->offset.comp = checkpoint->offset.comp;
         index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
         index->offset.uncomp = checkpoint->offset.uncomp;
+        z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
+        if (z_ret != Z_OK) return -9;
     }
 
     num_bytes_remaining = offset - index->offset.uncomp;
