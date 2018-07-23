@@ -270,7 +270,7 @@ Suite* libzidx_test_suite()
     tcase_add_unchecked_fixture(tc_core, unchecked_setup, unchecked_teardown);
     tcase_add_checked_fixture(tc_core, setup_core, teardown_core);
 
-    /* tcase_add_test(tc_core, test_comp_file_read); */
+    tcase_add_test(tc_core, test_comp_file_read);
     tcase_add_test(tc_core, test_comp_file_seek);
 
     suite_add_tcase(s, tc_core);
