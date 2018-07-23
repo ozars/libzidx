@@ -3,10 +3,6 @@ env:
     global:
         - TEST_EXT_DIR=test_ext
 sudo: required
-cache:
-    - ccache
-    - directories:
-        - $TEST_EXT_DIR
 install:
     - ./travis-install.sh "$TEST_EXT_DIR"
 script:

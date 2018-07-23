@@ -21,13 +21,10 @@ sudo apt-get update
 sudo apt-get install -y autoconf texinfo
 
 # Clone libraries needed for test if they are not cached
-TEST_EXT_DIR_CREATED=0
-mkdir "$TEST_EXT_DIR" && TEST_EXT_DIR_CREATED=1
-if [ $TEST_EXT_DIR_CREATED -eq 1 ]; then
-    cd "$TEST_EXT_DIR"
-    git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
-    git clone https://github.com/ozars/pcg-c
-fi
+mkdir "$TEST_EXT_DIR" || true
+cd "$TEST_EXT_DIR"
+git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
+git clone https://github.com/ozars/pcg-c
 
 # Install check
 cd "$TEST_EXT_DIR/check"
