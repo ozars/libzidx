@@ -1,10 +1,19 @@
-# Temporarily ignore test files
-/src/tests/
+/bin/
+/lib/
+/doc/
+/build/
+/tmp/
 
-bin/
-lib/
-doc/
-build/
+# Testing Artifacts
+/tests/check_*
+!/tests/check_*/
+!/tests/check_*.*
+*.log
+*.trs
+
+# Profiling Artifacts
+gmon.out
+prof_output
 
 # VIM files
 *.swp
@@ -73,3 +82,10 @@ autom4te.cache
 /install-sh
 /missing
 /stamp-h1
+
+# Autotools Artifacts
+*~
+.deps/
+Makefile
+config.h
+

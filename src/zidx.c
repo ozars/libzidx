@@ -8,13 +8,55 @@
 extern "C" {
 #endif
 
-#ifdef ZIDX_DEBUG
-#define ZIDX_LOG(...) do { printf(__VA_ARGS__); } while(0)
+#ifdef ZX_DEBUG
+#define ZX_LOG(...) do { printf(__VA_ARGS__); } while(0)
 #else
-#define ZIDX_LOG(...) while(0)
+#define ZX_LOG(...) while(0)
 #endif
 
-static int get_unused_bits_count(z_stream* zs)
+typedef enum zidx_stream_state
+{
+    ZX_STATE_INVALID,
+    ZX_STATE_FILE_HEADERS,
+    ZX_STATE_DEFLATE_BLOCKS,
+    ZX_STATE_FILE_TRAILER
+} zidx_stream_state;
+
+struct zidx_checkpoint_offset_s
+{
+    off_t uncomp;
+    off_t comp;
+    uint8_t comp_bits_count;
+    uint8_t comp_byte;
+};
+
+struct zidx_checkpoint_s
+{
+    zidx_checkpoint_offset offset;
+    uint32_t checksum;
+    uint8_t *window_data;
+};
+
+struct zidx_index_s
+{
+    zidx_comp_stream *comp_stream;
+    zidx_stream_state stream_state;
+    zidx_stream_type stream_type;
+    zidx_checkpoint_offset offset;
+    z_stream* z_stream;
+    int list_count;
+    int list_capacity;
+    zidx_checkpoint *list;
+    zidx_checksum_option checksum_option;
+    unsigned int window_size;
+    uint8_t *comp_data_buffer;
+    int comp_data_buffer_size;
+    uint8_t *seeking_data_buffer;
+    int seeking_data_buffer_size;
+    char z_stream_initialized;
+};
+
+static uint8_t get_unused_bits_count(z_stream* zs)
 {
     return zs->data_type & 7;
 }
@@ -48,7 +90,19 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 
     index->offset.comp += comp_bytes_inflated;
     index->offset.uncomp += uncomp_bytes_inflated;
-    index->offset.comp_bits = get_unused_bits_count(zs);
+
+    /* TODO: Remove block boundary check if this is not necessary. */
+    if (is_on_block_boundary(zs)) {
+        index->offset.comp_bits_count = get_unused_bits_count(zs);
+        if (index->offset.comp_bits_count > 0) {
+            index->offset.comp_byte = *(zs->next_in - 1);
+        } else {
+            index->offset.comp_byte = 0;
+        }
+    } else {
+        index->offset.comp_bits_count = 0;
+        index->offset.comp_byte = 0;
+    }
 
     return Z_OK;
 }
@@ -67,16 +121,23 @@ static int initialize_zstream(zidx_index* index, z_stream* zs, int window_bits)
     return z_ret;
 }
 
+zidx_index* zidx_index_create()
+{
+    zidx_index *index;
+    index = (zidx_index*) malloc(sizeof(zidx_index));
+    return index;
+}
+
 int zidx_index_init(zidx_index* index,
                      zidx_comp_stream* comp_stream)
 {
     return zidx_index_init_advanced(index, comp_stream,
-                                    ZIDX_STREAM_GZIP_OR_ZLIB,
-                                    ZIDX_CHECKSUM_DEFAULT, NULL,
-                                    ZIDX_DEFAULT_INITIAL_LIST_CAPACITY,
-                                    ZIDX_DEFAULT_WINDOW_SIZE,
-                                    ZIDX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
-                                    ZIDX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
+                                    ZX_STREAM_GZIP_OR_ZLIB,
+                                    ZX_CHECKSUM_DEFAULT, NULL,
+                                    ZX_DEFAULT_INITIAL_LIST_CAPACITY,
+                                    ZX_DEFAULT_WINDOW_SIZE,
+                                    ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
+                                    ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
 }
 
 int zidx_index_init_advanced(zidx_index* index,
@@ -128,11 +189,12 @@ int zidx_index_init_advanced(zidx_index* index,
 
     index->comp_stream             = comp_stream;
     index->offset.comp      = 0;
-    index->offset.comp_bits = 0;
+    index->offset.comp_bits_count = 0;
+    index->offset.comp_byte = 0;
     index->offset.uncomp    = 0;
     index->z_stream                      = z_stream_ptr;
     index->stream_type                   = stream_type;
-    index->stream_state                  = ZIDX_EXPECT_FILE_HEADERS;
+    index->stream_state                  = ZX_STATE_FILE_HEADERS;
     index->checksum_option               = checksum_option;
     index->z_stream_initialized          = 0;
 
@@ -148,12 +210,16 @@ memory_fail:
 
 int zidx_index_destroy(zidx_index* index)
 {
+    int z_ret;
     zidx_checkpoint *it;
-    zidx_checkpoint *end = index->list + index->list_count;
+    zidx_checkpoint *end;
 
     if (!index) return 0;
 
-    free(index->z_stream);
+    end = index->list + index->list_count;
+
+    z_ret = inflateEnd(index->z_stream);
+    if (z_ret != Z_OK) return -1;
 
     for (it = index->list; it < end; it++) {
         free(it->window_data);
@@ -195,20 +261,20 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
 
     switch (index->stream_state) {
         /* If headers are expected */
-        case ZIDX_EXPECT_FILE_HEADERS:
+        case ZX_STATE_FILE_HEADERS:
             switch(index->stream_type) {
-                case ZIDX_STREAM_DEFLATE:
-                    ZIDX_LOG("DEFLATE is being initialized.\n");
+                case ZX_STREAM_DEFLATE:
+                    ZX_LOG("DEFLATE is being initialized.\n");
                     z_ret = initialize_zstream(index, zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     break;
-                case ZIDX_STREAM_GZIP:
-                    ZIDX_LOG("GZIP is being initialized.\n");
+                case ZX_STREAM_GZIP:
+                    ZX_LOG("GZIP is being initialized.\n");
                     z_ret = initialize_zstream(index, zs, 16 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
-                case ZIDX_STREAM_GZIP_OR_ZLIB:
-                    ZIDX_LOG("GZIP/ZLIB is being initialized.\n");
+                case ZX_STREAM_GZIP_OR_ZLIB:
+                    ZX_LOG("GZIP/ZLIB is being initialized.\n");
                     z_ret = initialize_zstream(index, zs, 32 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
@@ -222,17 +288,20 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                         if (stream->error(stream->context)) return -2;
                         if (s_read_len == 0) return -3;
 
+                        /* TODO/BUG: Avail in can be truncated. Fix this.
+                         * Bug happens when comp_buf_len is less than header
+                         * size. */
                         zs->next_in     = comp_buf;
                         zs->avail_in    = s_read_len;
 
                         z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
 
-                        ZIDX_LOG("[HEADER] z_ret: %d\n", z_ret);
+                        ZX_LOG("[HEADER] z_ret: %d\n", z_ret);
                         if (z_ret == Z_OK) {
-                            ZIDX_LOG("[HEADER] Done reading.\n");
+                            ZX_LOG("[HEADER] Done reading.\n");
                             read_completed = 1;
                         } else {
-                            ZIDX_LOG("[HEADER] Error reading.\n");
+                            ZX_LOG("[HEADER] Error reading.\n");
                             return -4;
                         }
                     } // while not read_completed
@@ -243,17 +312,17 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                     return -6;
             }
 
-            index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
+            index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
 
-            ZIDX_LOG("[HEADER] Inflate initialized.\n");
+            ZX_LOG("[HEADER] Inflate initialized.\n");
 
-        case ZIDX_EXPECT_DEFLATE_BLOCKS:
+        case ZX_STATE_DEFLATE_BLOCKS:
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
             read_completed = 0;
             while (!read_completed) {
                 if(zs->avail_in == 0) {
-                    ZIDX_LOG("[BLOCKS] Reading compressed data.\n");
+                    ZX_LOG("[BLOCKS] Reading compressed data.\n");
                     s_read_len = stream->read(stream->context, comp_buf,
                                               comp_buf_len);
                     if (stream->error(stream->context)) return -7;
@@ -262,36 +331,38 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                     zs->avail_in = s_read_len;
                 }
                 z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
-                ZIDX_LOG("[BLOCKS] z_ret: %d\n", z_ret);
+                ZX_LOG("[BLOCKS] z_ret: %d\n", z_ret);
                 if (z_ret == Z_OK) {
                     if (is_on_block_boundary(zs)) {
-                        ZIDX_LOG("[BLOCKS] On block boundary.\n");
+                        ZX_LOG("[BLOCKS] On block boundary.\n");
                         if (is_last_deflate_block(zs)) {
-                            ZIDX_LOG("[BLOCKS] Last block.\n");
+                            ZX_LOG("[BLOCKS] Last block.\n");
                             read_completed = 1;
                         }
                         if (block_callback != NULL) {
-                            ZIDX_LOG("[BLOCKS] Block boundary callback.\n");
-                            (*block_callback)(callback_context,
-                                              index, &index->offset);
+                            ZX_LOG("[BLOCKS] Block boundary callback.\n");
+                            s_ret = (*block_callback)(callback_context,
+                                                      index, &index->offset,
+                                                      read_completed);
+                            if(s_ret != 0) return -100;
                         }
                     }
                     if (zs->avail_out == 0) {
-                        ZIDX_LOG("[BLOCKS] Buffer is full.\n");
+                        ZX_LOG("[BLOCKS] Buffer is full.\n");
                         read_completed = 1;
                     }
                 } else if (z_ret == Z_STREAM_END) {
-                    ZIDX_LOG("[BLOCKS] End of stream.\n");
+                    ZX_LOG("[BLOCKS] End of stream.\n");
                     return 0;
                 } else {
-                    #ifdef ZIDX_DEBUG
-                    ZIDX_LOG("[BLOCKS] Read error");
+                    #ifdef ZX_DEBUG
+                    ZX_LOG("[BLOCKS] Read error");
                     if(zs->msg != NULL) {
-                        ZIDX_LOG(": %s", zs->msg);
+                        ZX_LOG(": %s", zs->msg);
                     } else {
-                        ZIDX_LOG(".");
+                        ZX_LOG(".");
                     }
-                    ZIDX_LOG("\n");
+                    ZX_LOG("\n");
                     #endif
                     return -9;
                 }
@@ -322,46 +393,47 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
     off_t num_bytes_remaining;
     int num_bytes_next;
 
+    /* TODO: Implement whence */
+
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
 
     if (checkpoint == NULL) {
+        ZX_LOG("[SEEK] No checkpoint found.\n");
+
         f_ret = index->comp_stream->seek(
                                         index->comp_stream->context,
                                         0,
-                                        ZIDX_SEEK_SET);
+                                        ZX_SEEK_SET);
         if (f_ret < 0) return -2;
 
-        index->stream_state = ZIDX_EXPECT_FILE_HEADERS;
+        index->stream_state = ZX_STATE_FILE_HEADERS;
         index->offset.comp = 0;
-        index->offset.comp_bits = 0;
+        index->offset.comp_byte = 0;
+        index->offset.comp_bits_count = 0;
         index->offset.uncomp = 0;
+        index->z_stream->avail_in = 0;
     } else if (
             index->offset.comp < checkpoint->offset.comp
             || index->offset.comp > offset) {
+        ZX_LOG("[SEEK] Checkpoint found. (comp: %ld, uncomp: %ld)\n",
+                checkpoint->offset.comp, checkpoint->offset.uncomp);
         /* TODO: Fix window size */
         z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -3;
 
         f_ret = index->comp_stream->seek(index->comp_stream->context,
-                                         checkpoint->offset.comp -
-                                         (checkpoint->offset.comp_bits > 0
-                                                ? 1 : 0),
-                                         ZIDX_SEEK_SET);
+                                         checkpoint->offset.comp,
+                                         ZX_SEEK_SET);
         if (f_ret < 0) return -4;
+        /* TODO: Add stream eof check. */
 
-        if (checkpoint->offset.comp_bits > 0) {
-            f_ret = index->comp_stream->read(index->comp_stream->context,
-                                             &byte, 1);
-
-            if (f_ret != 1) return -5;
-
-            /* TODO: Check eof & error */
-
-            byte >>= (8 - checkpoint->offset.comp_bits);
+        if (checkpoint->offset.comp_bits_count > 0) {
+            byte = checkpoint->offset.comp_byte;
+            byte >>= (8 - checkpoint->offset.comp_bits_count);
 
             z_ret = inflatePrime(index->z_stream,
-                                 checkpoint->offset.comp_bits, byte);
+                                 checkpoint->offset.comp_bits_count, byte);
             if (z_ret != Z_OK) return -6;
         }
 
@@ -369,10 +441,11 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                      index->window_size);
         if (z_ret != Z_OK) return -7;
 
-        index->stream_state = ZIDX_EXPECT_DEFLATE_BLOCKS;
+        index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
         index->offset.comp = checkpoint->offset.comp;
-        index->offset.comp_bits = checkpoint->offset.comp_bits;
-        index->offset.uncomp = checkpoint->offset.comp;
+        index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
+        index->offset.uncomp = checkpoint->offset.uncomp;
+        index->z_stream->avail_in = 0;
     }
 
     num_bytes_remaining = offset - index->offset.uncomp;
@@ -385,6 +458,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
                                    num_bytes_next, block_callback,
                                    callback_context);
         if(f_ret < 0) return -8;
+        if(f_ret == 0) return 1;
 
         num_bytes_remaining -= f_ret;
     }
@@ -400,25 +474,35 @@ int zidx_build_index_advanced(zidx_index* index,
                               zidx_block_callback next_block_callback,
                               void *callback_context);
 
-int zidx_create_checkpoint(zidx_index* index,
-                           zidx_checkpoint* new_checkpoint,
-                           zidx_checkpoint_offset* offset)
+zidx_checkpoint* zidx_create_checkpoint()
+{
+    zidx_checkpoint *ckp;
+    ckp = calloc(1, sizeof(zidx_checkpoint));
+    return ckp;
+}
+
+int zidx_fill_checkpoint(zidx_index* index,
+                         zidx_checkpoint* new_checkpoint,
+                         zidx_checkpoint_offset* offset)
 {
     int z_ret;
+    unsigned int dict_length;
 
     if (index == NULL) return -1;
     if (new_checkpoint == NULL) return -2;
     if (offset == NULL) return -3;
 
     if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = (uint8_t *)
-                                          malloc(index->window_size);
+        new_checkpoint->window_data = (uint8_t *) malloc(index->window_size);
     }
 
-    memcpy(&new_checkpoint->offset, offset, sizeof(*offset));
+    memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
+
+    /* TODO: Use dict_length to store variable length window_data maybe? */
+    dict_length = index->window_size;
 
     z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
-                                 &index->window_size);
+                                 &dict_length);
     if (z_ret != Z_OK) return -4;
 
     return 0;
@@ -426,6 +510,7 @@ int zidx_create_checkpoint(zidx_index* index,
 
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 {
+    int last_uncomp;
     if (index == NULL) return -1;
     if (checkpoint == NULL) return -2;
 
@@ -433,9 +518,11 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         zidx_extend_index_size(index, index->list_count);
     }
 
-    int last_uncomp = index->list[index->list_count - 1].offset.uncomp;
-    if (checkpoint->offset.uncomp <= last_uncomp) {
-        return -3;
+    if (index->list_count > 0) {
+        last_uncomp = index->list[index->list_count - 1].offset.uncomp;
+        if (checkpoint->offset.uncomp <= last_uncomp) {
+            return -3;
+        }
     }
 
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
@@ -446,7 +533,7 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 
 int zidx_get_checkpoint(zidx_index* index, off_t offset)
 {
-    #define ZIDX_OFFSET_(idx) (index->list[idx].offset.uncomp)
+    #define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
 
     /* Variables used for binary search. */
     int left, right;
@@ -462,7 +549,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
 
     /* Check the last element first. We check it in here so that we don't
      * account for it in every iteartion of the loop below. */
-    if(ZIDX_OFFSET_(right) < offset) {
+    if(ZX_OFFSET_(right) < offset) {
         return idx;
     }
 
@@ -473,12 +560,12 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
 
         /* If current offset is greater, we need to move the range to left by
          * updating `right`. */
-        if(ZIDX_OFFSET_(idx) > offset) {
+        if(ZX_OFFSET_(idx) > offset) {
             right = idx - 1;
 
         /* If current offset is less than or equal, but also the following one,
          * we need to move the range to right by updating `left`. */
-        } else if(ZIDX_OFFSET_(idx + 1) <= offset) {
+        } else if(ZX_OFFSET_(idx + 1) <= offset) {
             left = idx + 1;
 
         /* If current offset is less than or equal, and the following one is
@@ -490,7 +577,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
 
     return -1;
 
-    #undef ZIDX_OFFSET_
+    #undef ZX_OFFSET_
 }
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
@@ -548,98 +635,6 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     return zidx_export_advanced(index, &output_stream, NULL, NULL);
 }
 
-int zidx_comp_file_init(zidx_comp_stream *stream, FILE *file)
-{
-    if(stream == NULL) return -1;
-
-    stream->read    = zidx_raw_file_read;
-    stream->seek    = zidx_raw_file_seek;
-    stream->tell    = zidx_raw_file_tell;
-    stream->eof     = zidx_raw_file_eof;
-    stream->error   = zidx_raw_file_error;
-    stream->length  = zidx_raw_file_length;
-    stream->context = (void*) file;
-
-    return 0;
-}
-
-int zidx_index_file_init(zidx_index_stream *stream, FILE *file)
-{
-    if(stream == NULL) return -1;
-
-    stream->read    = zidx_raw_file_read;
-    stream->write   = zidx_raw_file_write;
-    stream->seek    = zidx_raw_file_seek;
-    stream->tell    = zidx_raw_file_tell;
-    stream->eof     = zidx_raw_file_eof;
-    stream->error   = zidx_raw_file_error;
-    stream->context = (void*) file;
-
-    return 0;
-}
-
-int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes)
-{
-    return fread(buffer, 1, nbytes, (FILE*) file);
-}
-
-int zidx_raw_file_write(void *file, const uint8_t *buffer,
-                        int nbytes)
-{
-    return fwrite(buffer, 1, nbytes, (FILE*) file);
-}
-
-int zidx_raw_file_seek(void *file, off_t offset, int whence)
-{
-    switch(whence)
-    {
-        case ZIDX_SEEK_SET:
-            return fseek((FILE*) file, offset, SEEK_SET);
-        case ZIDX_SEEK_CUR:
-            return fseek((FILE*) file, offset, SEEK_CUR);
-        case ZIDX_SEEK_END:
-            return fseek((FILE*) file, offset, SEEK_END);
-    }
-    return fseek((FILE*) file, offset, whence);
-}
-
-off_t zidx_raw_file_tell(void *file)
-{
-    return ftell((FILE*) file);
-}
-
-int zidx_raw_file_eof(void *file)
-{
-    return feof((FILE*) file);
-}
-
-int zidx_raw_file_error(void *file)
-{
-    return ferror((FILE*) file);
-}
-
-off_t zidx_raw_file_length(void *file)
-{
-    off_t length;
-    off_t saved_pos;
-
-    saved_pos = zidx_raw_file_tell(file);
-    if(saved_pos < 0) goto fail;
-
-    if(zidx_raw_file_seek(file, 0, SEEK_END) < 0) goto cleanup;
-
-    length = zidx_raw_file_tell(file);
-    if(length < 0) goto cleanup;
-
-    if(zidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
-
-    return length;
-
-cleanup:
-    if(zidx_raw_file_seek(file, saved_pos, SEEK_SET) < 0) return -2;
-fail:
-    return -1;
-}
 
 #ifdef __cplusplus
 } // extern "C"

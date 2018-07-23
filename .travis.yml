@@ -1,19 +1,12 @@
 language: C
-before_install:
-    - sudo apt-get update
+env:
+    global:
+        - TEST_EXT_DIR=test_ext
+sudo: required
 install:
-    - sudo apt-get install -y autoconf texinfo
-    - git clone https://github.com/libcheck/check
-    - cd check
-    - autoreconf --install
-    - ./configure
-    - make
-    - sudo make install
-    - sudo ldconfig
-before_script:
-    - cd $TRAVIS_BUILD_DIR
+    - ./travis-install.sh "$TEST_EXT_DIR"
 script:
-    - autoreconf --install
+    - autoreconf -vfi
     - ./configure
     - make
     - make check
