@@ -166,12 +166,6 @@ int comp_file_seek_callback(void *context,
         (*num_blocks)++;
     }
 
-    printf("%ld:%d (%02x) %ld %d\n", offset->comp,
-                                     offset->comp_bits_count,
-                                     offset->comp_byte,
-                                     offset->uncomp,
-                                     last_block);
-
     ckp = zidx_create_checkpoint();
     ck_assert(ckp != NULL);
     zx_ret = zidx_fill_checkpoint(index, ckp, offset);
@@ -216,19 +210,6 @@ START_TEST(test_comp_file_seek)
 
         r_len = zidx_read(zx_index, buffer, sizeof(buffer));
         ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
-
-        for(i = 0; i < r_len; i++)
-        {
-            printf("%02X ", buffer[i]);
-        }
-        printf("...\n");
-        for(i = 0; i < r_len; i++)
-        {
-            printf("%02X ", uncomp_data[i]);
-        }
-        printf("...\n");
-
-        fflush(stdout);
 
         ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
                               "Incorrect data at offset %ld, "
