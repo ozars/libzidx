@@ -503,6 +503,7 @@ int zidx_fill_checkpoint(zidx_index* index,
 
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 {
+    int last_uncomp;
     if (index == NULL) return -1;
     if (checkpoint == NULL) return -2;
 
@@ -510,9 +511,11 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         zidx_extend_index_size(index, index->list_count);
     }
 
-    int last_uncomp = index->list[index->list_count - 1].offset.uncomp;
-    if (checkpoint->offset.uncomp <= last_uncomp) {
-        return -3;
+    if (index->list_count > 0) {
+        last_uncomp = index->list[index->list_count - 1].offset.uncomp;
+        if (checkpoint->offset.uncomp <= last_uncomp) {
+            return -3;
+        }
     }
 
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
