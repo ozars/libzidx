@@ -186,8 +186,8 @@ int comp_file_seek_callback(void *context,
 START_TEST(test_comp_file_seek)
 {
     int zx_ret;
+    int r_len;
     uint8_t buffer[1024];
-    uint8_t next_byte;
     int file_completed;
     int i;
     long offset;
@@ -211,20 +211,18 @@ START_TEST(test_comp_file_seek)
 
     offset = zx_index->offset.uncomp - step;
     while (offset > 0) {
-        uint8_t byte;
-
         zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
         ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
 
-        zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(zx_ret == 0, "Read returned %d at offset %ld", zx_ret, offset);
+        r_len = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
 
-        for(i = 0; i < sizeof(buffer); i++)
+        for(i = 0; i < r_len; i++)
         {
             printf("%02X ", buffer[i]);
         }
         printf("...\n");
-        for(i = 0; i < sizeof(buffer); i++)
+        for(i = 0; i < r_len; i++)
         {
             printf("%02X ", uncomp_data[i]);
         }
@@ -232,7 +230,7 @@ START_TEST(test_comp_file_seek)
 
         fflush(stdout);
 
-        ck_assert_msg(memcmp(buffer, uncomp_data + offset, sizeof(buffer)) == 0,
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
                               "Incorrect data at offset %ld, "
                               "expected %u (0x%02X), got %u (0x%02X).",
                               offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
