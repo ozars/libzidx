@@ -288,6 +288,9 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                         if (stream->error(stream->context)) return -2;
                         if (s_read_len == 0) return -3;
 
+                        /* TODO/BUG: Avail in can be truncated. Fix this.
+                         * Bug happens when comp_buf_len is less than header
+                         * size. */
                         zs->next_in     = comp_buf;
                         zs->avail_in    = s_read_len;
 
