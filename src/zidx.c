@@ -9,7 +9,11 @@ extern "C" {
 #endif
 
 #ifdef ZX_DEBUG
-#define ZX_LOG(...) do { printf(__VA_ARGS__); } while(0)
+#define ZX_LOG(...) \
+    do { \
+        fprintf(stderr, "%s:%d:%s: ", __FILE__, __LINE__, __func__); \
+        fprintf(stderr, __VA_ARGS__); \
+    } while(0)
 #else
 #define ZX_LOG(...) while(0)
 #endif
