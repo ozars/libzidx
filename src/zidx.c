@@ -60,16 +60,51 @@ struct zidx_index_s
     char z_stream_initialized;
 };
 
+/**
+ * Return number of unused bits count in the last byte consumed by inflate().
+ *
+ * This function should be used after a call to inflate. See the documentation
+ * of inflate() in zlib manual for more details.
+ *
+ * This function is used to store information about the byte which is used by
+ * two blocks in a block boundary. Therefore, return value of this function is
+ * meaningful for the purpose of this library only if the zs is in a block
+ * boundary.
+ *
+ * \param zs zlib stream.
+ *
+ * \return The number of bits unused in the last consumed byte.
+ */
 static uint8_t get_unused_bits_count(z_stream* zs)
 {
     return zs->data_type & 7;
 }
 
+/**
+ * Check if zlib stream is on last deflate block.
+ *
+ * This function should be used after a call to inflate. See the documentation
+ * of inflate() in zlib manual for more details.
+ *
+ * \param zs zlib stream.
+ *
+ * \return 64 if inflate stopped on block boundary, 0 otherwise.
+ */
 static int is_last_deflate_block(z_stream* zs)
 {
     return zs->data_type & 64;
 }
 
+/**
+ * Check if zlib stream is on block boundary.
+ *
+ * This function should be used after a call to inflate. See the documentation
+ * of inflate() in zlib manual for more details.
+ *
+ * \param zs zlib stream.
+ *
+ * \return 128 if inflate stopped on block boundary, 0 otherwise.
+ */
 static int is_on_block_boundary(z_stream *zs)
 {
     return zs->data_type & 128;
