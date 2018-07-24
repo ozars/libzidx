@@ -140,9 +140,13 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     available_comp_bytes   = zs->avail_in;
     available_uncomp_bytes = zs->avail_out;
 
+    /* If no data is available to decompress return. If this check is not made,
+     * setting index->offset.comp_byte may underflow while updating offset. */
+    if (available_comp_bytes == 0) return Z_OK;
+
     /* Use zlib to inflate data. */
     z_ret = inflate(zs, flush);
-    if(z_ret != Z_OK) return z_ret;
+    if (z_ret != Z_OK) return z_ret;
 
     /* Compute number of bytes inflated. */
     comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
