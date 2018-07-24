@@ -25,6 +25,10 @@ extern "C" {
 typedef struct z_stream_s z_stream;
 #endif
 
+/* Error codes. */
+
+#define ZX_ERR_PARAMS (-1)
+
 /* index/checkpoint data types */
 
 typedef struct zidx_index_s zidx_index;
@@ -63,7 +67,7 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr,
                              int initial_capacity,
-                             unsigned int window_size,
+                             int window_size,
                              int comp_data_buffer_size,
                              int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);

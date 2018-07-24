@@ -231,67 +231,124 @@ int zidx_index_init_advanced(zidx_index* index,
                              zidx_comp_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
-                             z_stream* z_stream_ptr, int initial_capacity,
-                             unsigned int window_size,
+                             z_stream* z_stream_ptr,
+                             int initial_capacity,
+                             int window_size,
                              int comp_data_buffer_size,
                              int seeking_data_buffer_size)
 {
-    /* assert(index != NULL); */
-    /* assert(comp_stream != NULL); */
-    /* assert stream_type is valid. */
-    /* assert checksum_option is valid. */
-    index->list = NULL;
-    index->comp_data_buffer = NULL;
+    /* Flag used to indicate whether z_stream_ptr argument should be released in
+     * case of a failure. */
+    int free_zs_on_failure;
+
+    /* Sanity checks. */
+    if (index == NULL || comp_stream == NULL) {
+        ZX_LOG("ERROR: index or comp_stream is null.");
+        return ZX_ERR_PARAMS;
+    }
+    if (stream_type != ZX_STREAM_GZIP && stream_type != ZX_STREAM_DEFLATE
+            && stream_type != ZX_STREAM_GZIP_OR_ZLIB) {
+        ZX_LOG("ERROR: Unknown stream_type: %d", (int) stream_type);
+        return ZX_ERR_PARAMS;
+    }
+    if (checksum_option != ZX_CHECKSUM_DISABLED
+            && checksum_option != ZX_CHECKSUM_DEFAULT
+            && checksum_option != ZX_CHECKSUM_FORCE_CRC32
+            && checksum_option != ZX_CHECKSUM_FORCE_ADLER32) {
+        ZX_LOG("ERROR: Unknown checksum_option: %d", (int) stream_type);
+        return ZX_ERR_PARAMS;
+    }
+    if (initial_capacity <= 0) {
+        ZX_LOG("ERROR: initial_capacity is nonpositive.");
+        return ZX_ERR_PARAMS;
+    }
+    if (window_size <= 0) {
+        ZX_LOG("ERROR: window_size is nonpositive.");
+        return ZX_ERR_PARAMS;
+    }
+    if (window_size != (1 << 9) && window_size != (1 << 10)
+            && window_size != (1 << 11) && window_size != (1 << 12)
+            && window_size != (1 << 13) && window_size != (1 << 14)
+            && window_size != (1 << 15)) {
+        ZX_LOG("ERROR: window_size is not a valid value.");
+        return ZX_ERR_PARAMS;
+    }
+    if (comp_data_buffer_size <= 0) {
+        ZX_LOG("ERROR: comp_data_buffer_size is nonpositive.");
+        return ZX_ERR_PARAMS;
+    }
+    if (seeking_data_buffer_size <= 0) {
+        ZX_LOG("ERROR: seeking_data_buffer_size is nonpositive.");
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Assign NULL to anything to be freed in case of a failure. */
+    index->list                = NULL;
+    index->comp_data_buffer    = NULL;
     index->seeking_data_buffer = NULL;
 
-    if (!z_stream_ptr) {
+    /* Initialize z_stream_ptr if not provided. free_sz_on_failure is set to
+     * indicate that z_stream_ptr is allocated by this function and it should be
+     * deallocated in case of a failure. */
+    if (z_stream_ptr) {
+        free_zs_on_failure = 0;
+    } else {
         z_stream_ptr = (z_stream*) malloc(sizeof(z_stream));
-
         if (!z_stream_ptr) goto memory_fail;
 
-        z_stream_ptr->zalloc   = Z_NULL;
-        z_stream_ptr->zfree    = Z_NULL;
-        z_stream_ptr->opaque   = Z_NULL;
+        z_stream_ptr->zalloc = Z_NULL;
+        z_stream_ptr->zfree  = Z_NULL;
+        z_stream_ptr->opaque = Z_NULL;
+
+        free_zs_on_failure = 1;
     }
     z_stream_ptr->avail_in = 0;
     z_stream_ptr->next_in  = Z_NULL;
 
-    index->list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint)
-                                                 * initial_capacity);
+    /* Initialize list. Note: Currently initial_capacity can't be zero, as it
+     * was checked in above sabity checks. */
+    index->list = (zidx_checkpoint*)
+                        malloc(sizeof(zidx_checkpoint) * initial_capacity);
     if (!index->list) goto memory_fail;
 
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
-    index->comp_data_buffer = (uint8_t*)
-                                        malloc(comp_data_buffer_size);
+    /* Initialize compressed data buffer. */
+    index->comp_data_buffer = (uint8_t*) malloc(comp_data_buffer_size);
     if (!index->comp_data_buffer) goto memory_fail;
 
+    /* Initialize seeking data buffer. */
     index->seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
     if (!index->seeking_data_buffer) goto memory_fail;
 
-    index->window_size                 = window_size;
-    index->comp_data_buffer_size = comp_data_buffer_size;
-    index->seeking_data_buffer_size    = seeking_data_buffer_size;
+    /* Initialize various size data. */
+    index->window_size              = window_size;
+    index->comp_data_buffer_size    = comp_data_buffer_size;
+    index->seeking_data_buffer_size = seeking_data_buffer_size;
 
-    index->comp_stream             = comp_stream;
-    index->offset.comp      = 0;
+    /* Initialize compression stream. */
+    index->comp_stream            = comp_stream;
+
+    /* Initialize current offsets. */
+    index->offset.comp            = 0;
     index->offset.comp_bits_count = 0;
-    index->offset.comp_byte = 0;
-    index->offset.uncomp    = 0;
-    index->z_stream                      = z_stream_ptr;
-    index->stream_type                   = stream_type;
-    index->stream_state                  = ZX_STATE_FILE_HEADERS;
-    index->checksum_option               = checksum_option;
-    index->z_stream_initialized          = 0;
+    index->offset.comp_byte       = 0;
+    index->offset.uncomp          = 0;
+
+    /* Initialize stream states and options. */
+    index->z_stream               = z_stream_ptr;
+    index->stream_type            = stream_type;
+    index->stream_state           = ZX_STATE_FILE_HEADERS;
+    index->checksum_option        = checksum_option;
+    index->z_stream_initialized   = 0;
 
     return 0;
 memory_fail:
-    free(z_stream_ptr);
+    if(free_zs_on_failure) free(z_stream_ptr);
     free(index->list);
     free(index->comp_data_buffer);
     free(index->seeking_data_buffer);
-/* fail: */
     return -1;
 }
 
