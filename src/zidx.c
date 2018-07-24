@@ -237,6 +237,13 @@ int zidx_index_init_advanced(zidx_index* index,
                              int comp_data_buffer_size,
                              int seeking_data_buffer_size)
 {
+    /* Temporary variables that will be used to initialize corresponding members
+     * of index. These are not modified directly on index, because we don't want
+     * to modify it in case of a failure. */
+    zidx_checkpoint *list;
+    uint8_t* comp_data_buffer;
+    uint8_t* seeking_data_buffer;
+
     /* Flag used to indicate whether z_stream_ptr argument should be released in
      * case of a failure. */
     int free_zs_on_failure;
@@ -283,9 +290,9 @@ int zidx_index_init_advanced(zidx_index* index,
     }
 
     /* Assign NULL to anything to be freed in case of a failure. */
-    index->list                = NULL;
-    index->comp_data_buffer    = NULL;
-    index->seeking_data_buffer = NULL;
+    list                = NULL;
+    comp_data_buffer    = NULL;
+    seeking_data_buffer = NULL;
 
     /* Initialize z_stream_ptr if not provided. free_sz_on_failure is set to
      * indicate that z_stream_ptr is allocated by this function and it should be
@@ -307,48 +314,61 @@ int zidx_index_init_advanced(zidx_index* index,
 
     /* Initialize list. Note: Currently initial_capacity can't be zero, as it
      * was checked in above sabity checks. */
-    index->list = (zidx_checkpoint*)
-                        malloc(sizeof(zidx_checkpoint) * initial_capacity);
-    if (!index->list) goto memory_fail;
+    list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint) * initial_capacity);
+    if (!list) goto memory_fail;
 
+    /* Initialize compressed data buffer. */
+    comp_data_buffer = (uint8_t*) malloc(comp_data_buffer_size);
+    if (!comp_data_buffer) goto memory_fail;
+
+    /* Initialize seeking data buffer. */
+    seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
+    if (!seeking_data_buffer) goto memory_fail;
+
+    /* Now that there are no failure possibilities (right?), we can modify
+     * index data structure. */
+
+    /* Set list. */
+    index->list          = list;
     index->list_count    = 0;
     index->list_capacity = initial_capacity;
 
-    /* Initialize compressed data buffer. */
-    index->comp_data_buffer = (uint8_t*) malloc(comp_data_buffer_size);
-    if (!index->comp_data_buffer) goto memory_fail;
+    /* Set compressed data buffer. */
+    index->comp_data_buffer      = comp_data_buffer;
+    index->comp_data_buffer_size = comp_data_buffer_size;
 
-    /* Initialize seeking data buffer. */
-    index->seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
-    if (!index->seeking_data_buffer) goto memory_fail;
-
-    /* Initialize various size data. */
-    index->window_size              = window_size;
-    index->comp_data_buffer_size    = comp_data_buffer_size;
+    /* Set seeking data buffer. */
+    index->seeking_data_buffer      = seeking_data_buffer;
     index->seeking_data_buffer_size = seeking_data_buffer_size;
 
-    /* Initialize compression stream. */
-    index->comp_stream            = comp_stream;
+    /* Set window size. */
+    index->window_size = window_size;
 
-    /* Initialize current offsets. */
+    /* Set compression stream. */
+    index->comp_stream = comp_stream;
+
+    /* Set current offsets. */
     index->offset.comp            = 0;
     index->offset.comp_bits_count = 0;
     index->offset.comp_byte       = 0;
     index->offset.uncomp          = 0;
 
-    /* Initialize stream states and options. */
-    index->z_stream               = z_stream_ptr;
-    index->stream_type            = stream_type;
-    index->stream_state           = ZX_STATE_FILE_HEADERS;
-    index->checksum_option        = checksum_option;
-    index->z_stream_initialized   = 0;
+    /* Set stream options. */
+    index->z_stream             = z_stream_ptr;
+    index->stream_type          = stream_type;
+    index->stream_state         = ZX_STATE_FILE_HEADERS;
+    index->z_stream_initialized = 0;
+
+    /* Set checksum option. */
+    index->checksum_option = checksum_option;
 
     return 0;
+
 memory_fail:
     if(free_zs_on_failure) free(z_stream_ptr);
-    free(index->list);
-    free(index->comp_data_buffer);
-    free(index->seeking_data_buffer);
+    free(list);
+    free(comp_data_buffer);
+    free(seeking_data_buffer);
     return -1;
 }
 
