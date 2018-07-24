@@ -180,6 +180,20 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     return Z_OK;
 }
 
+/**
+ * Initialize zs using inflateInit2() if this is first time. Otherwise use
+ * inflateReset2().
+ *
+ * \param index       Index data.
+ * \param zs          zlib stream data.
+ * \param window_bits Parameter to pass as a second argument to
+ *                    inflateInit2() or inflateReset2()
+ *
+ * \return The return value of inflateInit2() or inflateReset2().
+ *
+ * \todo  It is reduntant to pass zs, as it should be same with
+ *        index->z_stream. Consider removing second argument.
+ * */
 static int initialize_zstream(zidx_index* index, z_stream* zs, int window_bits)
 {
     int z_ret;
