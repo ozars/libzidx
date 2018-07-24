@@ -75,32 +75,61 @@ static int is_on_block_boundary(z_stream *zs)
     return zs->data_type & 128;
 }
 
+/**
+ * Inflate using buffers from zs, and update index->offset accordingly.
+ *
+ * This function is just a wrapper around inflate() function of zlib library. It
+ * updates offsets in index data after inflating.
+ *
+ * \param index Index data.
+ * \param zs    zlib stream data.
+ * \param flush flush parameter to pass as a second argument to inflate().
+ *
+ * \return The return value of inflate() call.
+ */
 static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 {
+    /* Number of bytes in input/output buffer before inflate. */
     int available_comp_bytes;
     int available_uncomp_bytes;
+
+    /* Number of bytes of compressed/uncompressed data consuemd/produced by
+     * inflate. */
     int comp_bytes_inflated;
     int uncomp_bytes_inflated;
+
+    /* Used for return value. */
     int z_ret;
 
+    /* Save number of bytes in input/output buffers. */
     available_comp_bytes   = zs->avail_in;
     available_uncomp_bytes = zs->avail_out;
 
+    /* Use zlib to inflate data. */
     z_ret = inflate(zs, flush);
     if(z_ret != Z_OK) return z_ret;
 
-    comp_bytes_inflated =  available_comp_bytes - zs->avail_in;
+    /* Compute number of bytes inflated. */
+    comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
     uncomp_bytes_inflated = available_uncomp_bytes - zs->avail_out;
 
-    index->offset.comp += comp_bytes_inflated;
+    /* Update byte offsets. */
+    index->offset.comp   += comp_bytes_inflated;
     index->offset.uncomp += uncomp_bytes_inflated;
 
-    /* TODO: Remove block boundary check if this is not necessary. */
+    /* Set bit offsets only if we are in block boundary. */
+    /* TODO: Truncating if not in block boundary is probably unnecessary. It may
+     * be deleted in future. */
     if (is_on_block_boundary(zs)) {
         index->offset.comp_bits_count = get_unused_bits_count(zs);
         if (index->offset.comp_bits_count > 0) {
+            /* If there is a byte some bits of which has been used, save this
+             * byte to offset. This byte will be feed to inflatePrime() if this
+             * block boundary is used as a checkpoint to seek on data. See
+             * zidx_seek() for more details. */
             index->offset.comp_byte = *(zs->next_in - 1);
         } else {
+            /* TODO: Again, is this necessary? Bits count will be already 0. */
             index->offset.comp_byte = 0;
         }
     } else {
@@ -108,6 +137,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
         index->offset.comp_byte = 0;
     }
 
+    /* We return Z_OK here, as z_ret should already be Z_OK at this point. */
     return Z_OK;
 }
 
