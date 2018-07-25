@@ -57,7 +57,7 @@ struct zidx_index_s
     int comp_data_buffer_size;
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
-    char z_stream_initialized;
+    char inflate_initialized;
 };
 
 /**
@@ -194,13 +194,13 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
  * \todo  It is reduntant to pass zs, as it should be same with
  *        index->z_stream. Consider removing second argument.
  * */
-static int initialize_zstream(zidx_index* index, z_stream* zs, int window_bits)
+static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
 {
     int z_ret;
-    if (!index->z_stream_initialized) {
+    if (!index->inflate_initialized) {
         z_ret = inflateInit2(zs, window_bits);
         if (z_ret == Z_OK) {
-            index->z_stream_initialized = 1;
+            index->inflate_initialized = 1;
         }
     } else {
         z_ret = inflateReset2(zs, window_bits);
@@ -354,10 +354,10 @@ int zidx_index_init_advanced(zidx_index* index,
     index->offset.uncomp          = 0;
 
     /* Set stream options. */
-    index->z_stream             = z_stream_ptr;
-    index->stream_type          = stream_type;
-    index->stream_state         = ZX_STATE_FILE_HEADERS;
-    index->z_stream_initialized = 0;
+    index->z_stream            = z_stream_ptr;
+    index->stream_type         = stream_type;
+    index->stream_state        = ZX_STATE_FILE_HEADERS;
+    index->inflate_initialized = 0;
 
     /* Set checksum option. */
     index->checksum_option = checksum_option;
@@ -429,17 +429,17 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
             switch(index->stream_type) {
                 case ZX_STREAM_DEFLATE:
                     ZX_LOG("DEFLATE is being initialized.\n");
-                    z_ret = initialize_zstream(index, zs, -MAX_WBITS);
+                    z_ret = initialize_inflate(index, zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     break;
                 case ZX_STREAM_GZIP:
                     ZX_LOG("GZIP is being initialized.\n");
-                    z_ret = initialize_zstream(index, zs, 16 + MAX_WBITS);
+                    z_ret = initialize_inflate(index, zs, 16 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 case ZX_STREAM_GZIP_OR_ZLIB:
                     ZX_LOG("GZIP/ZLIB is being initialized.\n");
-                    z_ret = initialize_zstream(index, zs, 32 + MAX_WBITS);
+                    z_ret = initialize_inflate(index, zs, 32 + MAX_WBITS);
                     if (z_ret != Z_OK) return -1;
                     goto read_headers;
                 read_headers:
@@ -469,7 +469,7 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
                             return -4;
                         }
                     } // while not read_completed
-                    z_ret = initialize_zstream(index, zs, -MAX_WBITS);
+                    z_ret = initialize_inflate(index, zs, -MAX_WBITS);
                     if (z_ret != Z_OK) return -5;
                     break;
                 default:
@@ -583,7 +583,7 @@ int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
         ZX_LOG("[SEEK] Checkpoint found. (comp: %ld, uncomp: %ld)\n",
                 checkpoint->offset.comp, checkpoint->offset.uncomp);
         /* TODO: Fix window size */
-        z_ret = initialize_zstream(index, index->z_stream, -MAX_WBITS);
+        z_ret = initialize_inflate(index, index->z_stream, -MAX_WBITS);
         if (z_ret != Z_OK) return -3;
 
         f_ret = index->comp_stream->seek(index->comp_stream->context,
