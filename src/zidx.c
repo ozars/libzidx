@@ -43,7 +43,7 @@ struct zidx_checkpoint_s
 
 struct zidx_index_s
 {
-    zidx_comp_stream *comp_stream;
+    zidx_stream *comp_stream;
     zidx_stream_state stream_state;
     zidx_stream_type stream_type;
     zidx_checkpoint_offset offset;
@@ -217,7 +217,7 @@ zidx_index* zidx_index_create()
 }
 
 int zidx_index_init(zidx_index* index,
-                     zidx_comp_stream* comp_stream)
+                     zidx_stream* comp_stream)
 {
     return zidx_index_init_advanced(index, comp_stream,
                                     ZX_STREAM_GZIP_OR_ZLIB,
@@ -229,7 +229,7 @@ int zidx_index_init(zidx_index* index,
 }
 
 int zidx_index_init_advanced(zidx_index* index,
-                             zidx_comp_stream* comp_stream,
+                             zidx_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr,
@@ -427,7 +427,7 @@ int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
     uint8_t read_completed;
 
     /* Aliases for frequently used elements. */
-    zidx_comp_stream *stream = index->comp_stream;
+    zidx_stream *stream = index->comp_stream;
     uint8_t *comp_buf               = index->comp_data_buffer;
     int comp_buf_len                = index->comp_data_buffer_size;
     z_stream *zs                   = index->z_stream;
@@ -771,18 +771,18 @@ void zidx_shrink_index_size(zidx_index* index);
 
 /* TODO: Implement these. */
 int zidx_import_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_import_filter_callback filter,
                          void *filter_context) { return 0; }
 
 int zidx_export_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_export_filter_callback filter,
                          void *filter_context) { return 0; }
 
 int zidx_import(zidx_index *index, FILE* input_index_file)
 {
-    const zidx_index_stream input_stream = {
+    const zidx_stream input_stream = {
         zidx_raw_file_read,
         zidx_raw_file_write,
         zidx_raw_file_seek,
@@ -796,7 +796,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
 
 int zidx_export(zidx_index *index, FILE* output_index_file)
 {
-    const zidx_index_stream output_stream = {
+    const zidx_stream output_stream = {
         zidx_raw_file_read,
         zidx_raw_file_write,
         zidx_raw_file_seek,

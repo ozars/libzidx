@@ -61,9 +61,9 @@ int (*zidx_block_callback)(void *context,
 
 zidx_index* zidx_index_create();
 int zidx_index_init(zidx_index* index,
-                    zidx_comp_stream* comp_stream);
+                    zidx_stream* comp_stream);
 int zidx_index_init_advanced(zidx_index* index,
-                             zidx_comp_stream* comp_stream,
+                             zidx_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr,
@@ -115,12 +115,12 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_checkpoint *offset);
 
 int zidx_import_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_import_filter_callback filter,
                          void *filter_context);
 
 int zidx_export_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_export_filter_callback filter,
                          void *filter_context);
 
