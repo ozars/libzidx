@@ -29,6 +29,7 @@ typedef struct z_stream_s z_stream;
 #define ZX_RET_OK (0)
 #define ZX_ERR_PARAMS (-1)
 #define ZX_ERR_MEMORY (-2)
+#define ZX_ERR_CORRUPTED (-3)
 
 /* index/checkpoint data types */
 

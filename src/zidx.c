@@ -383,23 +383,49 @@ memory_fail:
 
 int zidx_index_destroy(zidx_index* index)
 {
+    /* Return value for this function. */
+    int ret;
+
+    /* Return value used for zlib calls. */
     int z_ret;
+
+    /* Iterator and end pointer used for iterating over checkpoints. */
     zidx_checkpoint *it;
     zidx_checkpoint *end;
 
-    if (!index) return 0;
+    /* If index is NULL, okay is returned (to be consistent with free). */
+    if (!index) return ZX_RET_OK;
 
-    end = index->list + index->list_count;
+    /* Unless an error happens, okay will be returned. */
+    ret = ZX_RET_OK;
 
-    z_ret = inflateEnd(index->z_stream);
-    if (z_ret != Z_OK) return -1;
-
-    for (it = index->list; it < end; it++) {
-        free(it->window_data);
+    /* If z_stream should not be NULL. */
+    if (!index->z_stream) {
+        ret = ZX_ERR_CORRUPTED;
+    } else {
+        /* Release internal buffers of z_stream. */
+        if (index->inflate_initialized) {
+            z_ret = inflateEnd(index->z_stream);
+            if (z_ret != Z_OK) { ret = ZX_ERR_CORRUPTED; }
+        }
+        free(index->z_stream);
     }
-    free(index->list);
 
-    return 0;
+    /* Checkpoint list should not be NULL. */
+    if (!index->list) {
+        ret = ZX_ERR_CORRUPTED;
+    } else {
+        /* Release window data on each checkpoint. */
+        end = index->list + index->list_count;
+        for (it = index->list; it < end; it++) {
+            free(it->window_data);
+        }
+        free(index->list);
+    }
+
+    free(index);
+
+    return ret;
 }
 
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes)
