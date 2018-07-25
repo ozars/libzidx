@@ -371,14 +371,14 @@ int zidx_index_init_advanced(zidx_index* index,
     /* Set checksum option. */
     index->checksum_option = checksum_option;
 
-    return 0;
+    return ZX_RET_OK;
 
 memory_fail:
     if(free_zs_on_failure) free(z_stream_ptr);
     free(list);
     free(comp_data_buffer);
     free(seeking_data_buffer);
-    return -1;
+    return ZX_ERR_MEMORY;
 }
 
 int zidx_index_destroy(zidx_index* index)

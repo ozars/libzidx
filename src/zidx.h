@@ -25,9 +25,10 @@ extern "C" {
 typedef struct z_stream_s z_stream;
 #endif
 
-/* Error codes. */
-
+/* Return and error codes. */
+#define ZX_RET_OK (0)
 #define ZX_ERR_PARAMS (-1)
+#define ZX_ERR_MEMORY (-2)
 
 /* index/checkpoint data types */
 
