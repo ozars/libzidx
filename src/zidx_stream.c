@@ -16,14 +16,15 @@
 extern "C" {
 #endif
 
-zidx_comp_stream* zidx_comp_file_create(FILE *file)
+zidx_stream* zidx_stream_from_file(FILE *file)
 {
-    zidx_comp_stream *stream;
+    zidx_stream *stream;
 
-    stream = (zidx_comp_stream*) malloc(sizeof(zidx_comp_stream));
+    stream = (zidx_stream*) malloc(sizeof(zidx_stream));
     if(stream == NULL) return NULL;
 
     stream->read    = zidx_raw_file_read;
+    stream->write   = zidx_raw_file_write;
     stream->seek    = zidx_raw_file_seek;
     stream->tell    = zidx_raw_file_tell;
     stream->eof     = zidx_raw_file_eof;
@@ -34,22 +35,14 @@ zidx_comp_stream* zidx_comp_file_create(FILE *file)
     return stream;
 }
 
-zidx_index_stream* zidx_index_file_create(FILE *file)
+zidx_stream* zidx_stream_open(const char *path, const char *mode)
 {
-    zidx_index_stream *stream;
+    FILE *file;
 
-    stream = (zidx_index_stream*) malloc(sizeof(zidx_index_stream));
-    if(stream == NULL) return NULL;
+    file = fopen(path, mode);
+    if (!file) return NULL;
 
-    stream->read    = zidx_raw_file_read;
-    stream->write   = zidx_raw_file_write;
-    stream->seek    = zidx_raw_file_seek;
-    stream->tell    = zidx_raw_file_tell;
-    stream->eof     = zidx_raw_file_eof;
-    stream->error   = zidx_raw_file_error;
-    stream->context = (void*) file;
-
-    return stream;
+    return zidx_stream_from_file(file);
 }
 
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes)

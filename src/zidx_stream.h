@@ -118,37 +118,27 @@ typedef
 off_t (*zidx_stream_length_callback)(void *stream_context);
 
 /**
- * Layout for a gzip input stream.
+ * Layout for a stream.
  *
- * Currently only reading is supported.
+ * zidx_stream abstracts I/O so that it can be customized easily. If a function
+ * callback is NULL, it means this operation is not supported. However, the
+ * opposite may not be true: If a function is not NULL, it doesn't necessarily
+ * mean that the operation is supported.
  */
-typedef struct zidx_comp_stream
+typedef struct zidx_stream_s
 {
     zidx_stream_read_callback   read;
+    zidx_stream_write_callback  write;
     zidx_stream_seek_callback   seek;
     zidx_stream_tell_callback   tell;
     zidx_stream_eof_callback    eof;
     zidx_stream_error_callback  error;
     zidx_stream_length_callback length;
     void *context;
-} zidx_comp_stream;
+} zidx_stream;
 
-/**
- * Layout for a gzip index stream.
- */
-typedef struct zidx_index_stream
-{
-    zidx_stream_read_callback  read;
-    zidx_stream_write_callback write;
-    zidx_stream_seek_callback  seek;
-    zidx_stream_tell_callback  tell;
-    zidx_stream_eof_callback   eof;
-    zidx_stream_error_callback error;
-    void *context;
-} zidx_index_stream;
-
-zidx_comp_stream* zidx_comp_file_create(FILE *f);
-zidx_index_stream* zidx_index_file_create(FILE *f);
+zidx_stream* zidx_stream_from_file(FILE *file);
+zidx_stream* zidx_stream_open(const char *path, const char *mode);
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes);
 int zidx_raw_file_write(void *file, const uint8_t *buffer, int nbytes);
 int zidx_raw_file_seek(void *file, off_t offset, int whence);
