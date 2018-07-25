@@ -53,6 +53,7 @@ struct zidx_index_s
     zidx_checkpoint *list;
     zidx_checksum_option checksum_option;
     unsigned int window_size;
+    int window_bits;
     uint8_t *comp_data_buffer;
     int comp_data_buffer_size;
     uint8_t *seeking_data_buffer;
@@ -243,6 +244,7 @@ int zidx_index_init_advanced(zidx_index* index,
     zidx_checkpoint *list;
     uint8_t* comp_data_buffer;
     uint8_t* seeking_data_buffer;
+    int window_bits;
 
     /* Flag used to indicate whether z_stream_ptr argument should be released in
      * case of a failure. */
@@ -273,12 +275,18 @@ int zidx_index_init_advanced(zidx_index* index,
         ZX_LOG("ERROR: window_size is nonpositive.");
         return ZX_ERR_PARAMS;
     }
-    if (window_size != (1 << 9) && window_size != (1 << 10)
-            && window_size != (1 << 11) && window_size != (1 << 12)
-            && window_size != (1 << 13) && window_size != (1 << 14)
-            && window_size != (1 << 15)) {
-        ZX_LOG("ERROR: window_size is not a valid value.");
+    if (window_size < 512 || window_size > 32768) {
+        ZX_LOG("ERROR: window_size should be between 512-32768 inclusive.");
         return ZX_ERR_PARAMS;
+    }
+    for (window_bits = 9; window_bits <= 15; window_bits++) {
+        if (window_size == (1 << window_bits)) {
+            break;
+        }
+        if (window_size < (1 << window_bits)) {
+            ZX_LOG("ERROR: window_size should be a power of 2.");
+            return ZX_ERR_PARAMS;
+        }
     }
     if (comp_data_buffer_size <= 0) {
         ZX_LOG("ERROR: comp_data_buffer_size is nonpositive.");
@@ -341,8 +349,9 @@ int zidx_index_init_advanced(zidx_index* index,
     index->seeking_data_buffer      = seeking_data_buffer;
     index->seeking_data_buffer_size = seeking_data_buffer_size;
 
-    /* Set window size. */
+    /* Set window size and bits. */
     index->window_size = window_size;
+    index->window_bits = window_bits;
 
     /* Set compression stream. */
     index->comp_stream = comp_stream;
