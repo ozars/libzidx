@@ -423,8 +423,6 @@ int zidx_index_destroy(zidx_index* index)
         free(index->list);
     }
 
-    free(index);
-
     return ret;
 }
 
