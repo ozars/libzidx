@@ -137,6 +137,41 @@ typedef struct zidx_stream_s
     void *context;
 } zidx_stream;
 
+inline int zidx_stream_read(zidx_stream *stream, uint8_t *buffer, int nbytes)
+{
+    return stream->read(stream->context, buffer, nbytes);
+}
+
+inline int zidx_stream_write(zidx_stream *stream, uint8_t *buffer, int nbytes)
+{
+    return stream->write(stream->context, buffer, nbytes);
+}
+
+inline int zidx_stream_seek(zidx_stream *stream, off_t offset, int whence)
+{
+    return stream->seek(stream->context, offset, whence);
+}
+
+inline off_t zidx_stream_tell(zidx_stream *stream)
+{
+    return stream->tell(stream->context);
+}
+
+inline int zidx_stream_eof(zidx_stream *stream)
+{
+    return stream->eof(stream->context);
+}
+
+inline int zidx_stream_error(zidx_stream *stream)
+{
+    return stream->error(stream->context);
+}
+
+inline off_t zidx_stream_length(zidx_stream *stream)
+{
+    return stream->length(stream->context);
+}
+
 zidx_stream* zidx_stream_from_file(FILE *file);
 zidx_stream* zidx_stream_open(const char *path, const char *mode);
 int zidx_raw_file_read(void *file, uint8_t *buffer, int nbytes);
