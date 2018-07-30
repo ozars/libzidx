@@ -638,136 +638,108 @@ int zidx_read_advanced(zidx_index* index,
                        void *callback_context)
 {
     /* TODO: Implement Z_SYNC_FLUSH option. */
-    /* TODO: Implement decompression of existing compressed data after read
-     * callback returns with less number of bytes read. */
-    /* TODO: Check return values of read calls better in case they return
-     * shorter then expected buffer length.  */
     /* TODO: Implement support for concatanated gzip streams. */
     /* TODO: Implement window bits to reflect reality (window size). */
-    /* TODO: Convert buffer type to uint8_t* */
 
-    int z_ret;      /* Return value for zlib calls. */
-    int s_ret;      /* Return value for stream calls. */
-    int s_read_len; /* Return value for stream read calls. */
+    /* Return value for private (static) function calls. */
+    int ret;
 
-    uint8_t read_completed;
+    /* Return value for zlib calls. */
+    int z_ret;
 
-    /* Aliases for frequently used elements. */
-    zidx_stream *stream = index->comp_stream;
-    uint8_t *comp_buf               = index->comp_data_buffer;
-    int comp_buf_len                = index->comp_data_buffer_size;
-    z_stream *zs                   = index->z_stream;
+    /* Window bits used for initializing inflate for headers. Window bits in
+     * index can't be used for this purpose, because this variable will be used
+     * for denoting stream type as well. */
+    int window_bits;
+
+    /* Aliases for frequently used index members. */
+    z_stream *zs = index->z_stream;
 
     switch (index->stream_state) {
-        /* If headers are expected */
         case ZX_STATE_FILE_HEADERS:
-            switch(index->stream_type) {
+            /* Assign window_bits with respect to stream type. */
+            switch (index->stream_type) {
                 case ZX_STREAM_DEFLATE:
-                    ZX_LOG("DEFLATE is being initialized.\n");
-                    z_ret = initialize_inflate(index, zs, -MAX_WBITS);
-                    if (z_ret != Z_OK) return -1;
+                    window_bits = -index->window_bits;
                     break;
                 case ZX_STREAM_GZIP:
-                    ZX_LOG("GZIP is being initialized.\n");
-                    z_ret = initialize_inflate(index, zs, 16 + MAX_WBITS);
-                    if (z_ret != Z_OK) return -1;
-                    goto read_headers;
-                case ZX_STREAM_GZIP_OR_ZLIB:
-                    ZX_LOG("GZIP/ZLIB is being initialized.\n");
-                    z_ret = initialize_inflate(index, zs, 32 + MAX_WBITS);
-                    if (z_ret != Z_OK) return -1;
-                    goto read_headers;
-                read_headers:
-                    zs->next_out   = buffer;
-                    zs->avail_out  = 0;
-                    read_completed = 0;
-                    while (!read_completed) {
-                        s_read_len = stream->read(stream->context, comp_buf,
-                                                  comp_buf_len);
-                        if (stream->error(stream->context)) return -2;
-                        if (s_read_len == 0) return -3;
-
-                        /* TODO/BUG: Avail in can be truncated. Fix this.
-                         * Bug happens when comp_buf_len is less than header
-                         * size. */
-                        zs->next_in     = comp_buf;
-                        zs->avail_in    = s_read_len;
-
-                        z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
-
-                        ZX_LOG("[HEADER] z_ret: %d\n", z_ret);
-                        if (z_ret == Z_OK) {
-                            ZX_LOG("[HEADER] Done reading.\n");
-                            read_completed = 1;
-                        } else {
-                            ZX_LOG("[HEADER] Error reading.\n");
-                            return -4;
-                        }
-                    } // while not read_completed
-                    z_ret = initialize_inflate(index, zs, -MAX_WBITS);
-                    if (z_ret != Z_OK) return -5;
+                    window_bits = 16 + index->window_bits;
                     break;
-                default:
-                    return -6;
+                case ZX_STREAM_GZIP_OR_ZLIB:
+                    window_bits = 32 + index->window_bits;
+                    break;
             }
 
+            /* Initialize inflate. Window bits should have been initialized by
+             * zidx_index_init() per stream type. */
+            z_ret = initialize_inflate(index, zs, window_bits);
+            if (z_ret != Z_OK) {
+                ZX_LOG("ERROR: inflate initialization returned error (%d).\n",
+                       z_ret);
+                return ZX_ERR_ZLIB(z_ret);
+            }
+
+            if (index->stream_type != ZX_STREAM_DEFLATE) {
+                /* If stream type is not DEFLATE, then read headers. Since no
+                 * output will be produced avail_out will be 0. However,
+                 * assigning next_out to NULL causes error when calling inflate,
+                 * so leave it as a non-NULL value even if it's not gonna be
+                 * used. */
+                zs->next_out  = buffer;
+                zs->avail_out = 0;
+
+                ret = read_headers(index, block_callback, callback_context);
+                if (ret != ZX_RET_OK) {
+                    ZX_LOG("ERROR: While reading headers (%d).\n", ret);
+                    return ret;
+                }
+
+                /* Then initialize inflate to be used for DEFLATE blocks. This
+                 * is preferable way because seeking messes with internal
+                 * checksum computation of zlib. Best way to disable it to treat
+                 * each gzip/zlib blocks as individual deflate blocks, and
+                 * control checksum in-house. index->window_bits used
+                 * intentionally instead of local variable window_bits, since
+                 * inflate will be initialized as deflate. */
+                z_ret = initialize_inflate(index, zs, -index->window_bits);
+                if (z_ret != Z_OK) {
+                    ZX_LOG("ERROR: initialize_inflate returned error (%d).\n",
+                           z_ret);
+                    return ZX_ERR_ZLIB(z_ret);
+                }
+            }
+
+            ZX_LOG("Done reading header.\n");
             index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
 
-            ZX_LOG("[HEADER] Inflate initialized.\n");
+            /* Continue to next case to handle first deflate block. */
 
         case ZX_STATE_DEFLATE_BLOCKS:
+            /* Input buffer (next_in, avail_in) shouldn't be modified here, as
+             * there could be data left from previous reading. */
+
+            /* Set output buffer and available bytes for output. */
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
-            read_completed = 0;
-            while (!read_completed) {
-                if(zs->avail_in == 0) {
-                    ZX_LOG("[BLOCKS] Reading compressed data.\n");
-                    s_read_len = stream->read(stream->context, comp_buf,
-                                              comp_buf_len);
-                    if (stream->error(stream->context)) return -7;
 
-                    zs->next_in  = comp_buf;
-                    zs->avail_in = s_read_len;
-                }
-                z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
-                ZX_LOG("[BLOCKS] z_ret: %d\n", z_ret);
-                if (z_ret == Z_OK) {
-                    if (is_on_block_boundary(zs)) {
-                        ZX_LOG("[BLOCKS] On block boundary.\n");
-                        if (is_last_deflate_block(zs)) {
-                            ZX_LOG("[BLOCKS] Last block.\n");
-                            read_completed = 1;
-                        }
-                        if (block_callback != NULL) {
-                            ZX_LOG("[BLOCKS] Block boundary callback.\n");
-                            s_ret = (*block_callback)(callback_context,
-                                                      index, &index->offset,
-                                                      read_completed);
-                            if(s_ret != 0) return -100;
-                        }
-                    }
-                    if (zs->avail_out == 0) {
-                        ZX_LOG("[BLOCKS] Buffer is full.\n");
-                        read_completed = 1;
-                    }
-                } else if (z_ret == Z_STREAM_END) {
-                    ZX_LOG("[BLOCKS] End of stream.\n");
-                    return 0;
-                } else {
-                    #ifdef ZX_DEBUG
-                    ZX_LOG("[BLOCKS] Read error");
-                    if(zs->msg != NULL) {
-                        ZX_LOG(": %s", zs->msg);
-                    } else {
-                        ZX_LOG(".");
-                    }
-                    ZX_LOG("\n");
-                    #endif
-                    return -9;
-                }
-            } // while not read_completed
+            ret = read_deflate_blocks(index, block_callback, callback_context);
+            if (ret != ZX_RET_OK) {
+                ZX_LOG("ERROR: While reading deflate blocks (%d).\n", ret);
+                return ret;
+            }
             break;
-    } // end of stream state switch
+
+        case ZX_STATE_FILE_TRAILER:
+            /* TODO: Implement this. */
+            ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
+            return ZX_ERR_CORRUPTED;
+
+        case ZX_STATE_INVALID:
+            /* TODO: Implement this. */
+            ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
+            return ZX_ERR_CORRUPTED;
+
+    } /* end of switch(index->stream_state) */
 
     /* Return number of bytes read into the buffer. */
     return zs->next_out - buffer;
