@@ -310,6 +310,91 @@ static int read_headers(zidx_index* index,
     return ZX_RET_OK;
 }
 
+static int read_deflate_blocks(zidx_index* index,
+                               zidx_block_callback block_callback,
+                               void *callback_context)
+{
+    /* Flag to check if reading blocks is completed. */
+    int reading_completed;
+
+    /* Used for storing number of bytes read from stream. */
+    int s_read_len;
+
+    /* Used for storing return value of stream functions. */
+    int s_ret;
+
+    /* Used for storing return value of zlib calls. */
+    int z_ret;
+
+    /* Aliases for frequently used members of index. */
+    zidx_stream* stream = index->comp_stream;
+    z_stream* zs = index->z_stream;
+    uint8_t* buf = index->comp_data_buffer;
+    int buf_len  = index->comp_data_buffer_size;
+
+    reading_completed = 0;
+    while (!reading_completed) {
+        /* Read from stream if no data is available in buffer. */
+        if(zs->avail_in == 0) {
+            s_read_len = zidx_stream_read(stream, buf, buf_len);
+            s_ret = zidx_stream_error(stream);
+            if (s_ret) {
+                ZX_LOG("ERROR: Reading from stream (%d).\n",
+                       s_ret);
+                return ZX_ERR_STREAM_READ;
+            }
+            if (s_read_len == 0) {
+                ZX_LOG("ERROR: Unexpected EOF while reading file "
+                       "header. (%d).\n", s_ret);
+                return ZX_ERR_STREAM_EOF;
+            }
+
+            zs->next_in  = buf;
+            zs->avail_in = s_read_len;
+        }
+        if (block_callback == NULL) {
+            z_ret = inflate_and_update_offset(index, zs, Z_SYNC_FLUSH);
+        } else {
+            z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
+        }
+        if (z_ret == Z_OK) {
+            if (is_on_block_boundary(zs)) {
+                ZX_LOG("[BLOCKS] On block boundary.\n");
+                if (is_last_deflate_block(zs)) {
+                    ZX_LOG("[BLOCKS] Last block.\n");
+                    reading_completed = 1;
+                }
+                if (block_callback != NULL) {
+                    ZX_LOG("[BLOCKS] Block boundary callback.\n");
+                    s_ret = (*block_callback)(callback_context,
+                                              index, &index->offset,
+                                              reading_completed);
+                    if(s_ret != 0) return -100;
+                }
+            }
+            if (zs->avail_out == 0) {
+                ZX_LOG("[BLOCKS] Buffer is full.\n");
+                reading_completed = 1;
+            }
+        } else if (z_ret == Z_STREAM_END) {
+            ZX_LOG("End of stream reached.\n");
+            reading_completed = 1;
+        } else {
+            if(zs->msg != NULL) {
+                ZX_LOG("ERROR: inflate_and_update_offset returned error (%d): "
+                       " %s\n", z_ret, zs->msg);
+            } else {
+                ZX_LOG("ERROR: inflate_and_update_offset returned error (%d).\n",
+                       z_ret);
+            }
+
+            return ZX_ERR_ZLIB(z_ret);
+        }
+    } /* while (!read_completed) */
+
+    return ZX_RET_OK;
+}
+
 zidx_index* zidx_index_create()
 {
     zidx_index *index;
