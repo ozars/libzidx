@@ -147,7 +147,10 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 
     /* Use zlib to inflate data. */
     z_ret = inflate(zs, flush);
-    if (z_ret != Z_OK) return z_ret;
+    if (z_ret != Z_OK) {
+        ZX_LOG("ERROR: inflate (%d).\n", z_ret);
+        return z_ret;
+    }
 
     /* Compute number of bytes inflated. */
     comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
@@ -158,8 +161,8 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     index->offset.uncomp += uncomp_bytes_inflated;
 
     /* Set bit offsets only if we are in block boundary. */
-    /* TODO: Truncating if not in block boundary is probably unnecessary. It may
-     * be deleted in future. */
+    /* TODO: Truncating if not in block boundary is probably unnecessary. May be
+     * removed in future. */
     if (is_on_block_boundary(zs)) {
         index->offset.comp_bits_count = get_unused_bits_count(zs);
         if (index->offset.comp_bits_count > 0) {
@@ -202,9 +205,13 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
         z_ret = inflateInit2(zs, window_bits);
         if (z_ret == Z_OK) {
             index->inflate_initialized = 1;
+            ZX_LOG("Initialized inflate successfully.\n");
         }
     } else {
         z_ret = inflateReset2(zs, window_bits);
+        if (z_ret == Z_OK) {
+            ZX_LOG("Reset inflate successfully.\n");
+        }
     }
     return z_ret;
 }
@@ -219,9 +226,11 @@ zidx_index* zidx_index_create()
 int zidx_index_init(zidx_index* index,
                      zidx_stream* comp_stream)
 {
-    return zidx_index_init_advanced(index, comp_stream,
+    return zidx_index_init_advanced(index,
+                                    comp_stream,
                                     ZX_STREAM_GZIP_OR_ZLIB,
-                                    ZX_CHECKSUM_DEFAULT, NULL,
+                                    ZX_CHECKSUM_DEFAULT,
+                                    NULL,
                                     ZX_DEFAULT_INITIAL_LIST_CAPACITY,
                                     ZX_DEFAULT_WINDOW_SIZE,
                                     ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
@@ -252,31 +261,31 @@ int zidx_index_init_advanced(zidx_index* index,
 
     /* Sanity checks. */
     if (index == NULL || comp_stream == NULL) {
-        ZX_LOG("ERROR: index or comp_stream is null.");
+        ZX_LOG("ERROR: index or comp_stream is null.\n");
         return ZX_ERR_PARAMS;
     }
     if (stream_type != ZX_STREAM_GZIP && stream_type != ZX_STREAM_DEFLATE
             && stream_type != ZX_STREAM_GZIP_OR_ZLIB) {
-        ZX_LOG("ERROR: Unknown stream_type: %d", (int) stream_type);
+        ZX_LOG("ERROR: Unknown stream_type (%d).\n", (int) stream_type);
         return ZX_ERR_PARAMS;
     }
     if (checksum_option != ZX_CHECKSUM_DISABLED
             && checksum_option != ZX_CHECKSUM_DEFAULT
             && checksum_option != ZX_CHECKSUM_FORCE_CRC32
             && checksum_option != ZX_CHECKSUM_FORCE_ADLER32) {
-        ZX_LOG("ERROR: Unknown checksum_option: %d", (int) stream_type);
+        ZX_LOG("ERROR: Unknown checksum_option (%d).\n", (int) stream_type);
         return ZX_ERR_PARAMS;
     }
     if (initial_capacity <= 0) {
-        ZX_LOG("ERROR: initial_capacity is nonpositive.");
+        ZX_LOG("ERROR: initial_capacity is nonpositive.\n");
         return ZX_ERR_PARAMS;
     }
     if (window_size <= 0) {
-        ZX_LOG("ERROR: window_size is nonpositive.");
+        ZX_LOG("ERROR: window_size is nonpositive.\n");
         return ZX_ERR_PARAMS;
     }
     if (window_size < 512 || window_size > 32768) {
-        ZX_LOG("ERROR: window_size should be between 512-32768 inclusive.");
+        ZX_LOG("ERROR: window_size should be between 512-32768 inclusive.\n");
         return ZX_ERR_PARAMS;
     }
     for (window_bits = 9; window_bits <= 15; window_bits++) {
@@ -284,16 +293,16 @@ int zidx_index_init_advanced(zidx_index* index,
             break;
         }
         if (window_size < (1 << window_bits)) {
-            ZX_LOG("ERROR: window_size should be a power of 2.");
+            ZX_LOG("ERROR: window_size should be a power of 2.\n");
             return ZX_ERR_PARAMS;
         }
     }
     if (comp_data_buffer_size <= 0) {
-        ZX_LOG("ERROR: comp_data_buffer_size is nonpositive.");
+        ZX_LOG("ERROR: comp_data_buffer_size is nonpositive.\n");
         return ZX_ERR_PARAMS;
     }
     if (seeking_data_buffer_size <= 0) {
-        ZX_LOG("ERROR: seeking_data_buffer_size is nonpositive.");
+        ZX_LOG("ERROR: seeking_data_buffer_size is nonpositive.\n");
         return ZX_ERR_PARAMS;
     }
 
@@ -323,15 +332,24 @@ int zidx_index_init_advanced(zidx_index* index,
     /* Initialize list. Note: Currently initial_capacity can't be zero, as it
      * was checked in above sabity checks. */
     list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint) * initial_capacity);
-    if (!list) goto memory_fail;
+    if (!list) {
+        ZX_LOG("ERROR: Couldn't allocate memory for checkpoint list.\n");
+        goto memory_fail;
+    }
 
     /* Initialize compressed data buffer. */
     comp_data_buffer = (uint8_t*) malloc(comp_data_buffer_size);
-    if (!comp_data_buffer) goto memory_fail;
+    if (!comp_data_buffer) {
+        ZX_LOG("ERROR: Couldn't allocate memory for compression data buffer.\n");
+        goto memory_fail;
+    }
 
     /* Initialize seeking data buffer. */
     seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
-    if (!seeking_data_buffer) goto memory_fail;
+    if (!seeking_data_buffer) {
+        ZX_LOG("ERROR: Couldn't allocate memory for seeking data buffer.\n");
+        goto memory_fail;
+    }
 
     /* Now that there are no failure possibilities (right?), we can modify
      * index data structure. */
@@ -370,6 +388,8 @@ int zidx_index_init_advanced(zidx_index* index,
 
     /* Set checksum option. */
     index->checksum_option = checksum_option;
+
+    ZX_LOG("Initialization was successful.\n");
 
     return ZX_RET_OK;
 
@@ -428,11 +448,14 @@ int zidx_index_destroy(zidx_index* index)
 
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes)
 {
+    /* Pass to explicit version without block callbacks. */
     return zidx_read_advanced(index, buffer, nbytes, NULL, NULL);
 }
 
-int zidx_read_advanced(zidx_index* index, uint8_t *buffer,
-                       int nbytes, zidx_block_callback block_callback,
+int zidx_read_advanced(zidx_index* index,
+                       uint8_t *buffer,
+                       int nbytes,
+                       zidx_block_callback block_callback,
                        void *callback_context)
 {
     /* TODO: Implement Z_SYNC_FLUSH option. */
