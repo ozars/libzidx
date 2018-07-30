@@ -216,6 +216,100 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
     return z_ret;
 }
 
+/**
+ * Read headers of a gzip or zlib file.
+ *
+ * \param index Index data.
+ *
+ * \return ZX_RET_OK if successful.
+ *         ZX_ERR_STREAM_READ if an error happens while reading from stream.
+ *         ZX_ERR_STREAM_EOF if EOF is reached unexpectedly while reading from
+ *         stream.
+ *         ZX_ERR_ZLIB(...) if zlib returns an error.
+ *
+ * \note This function assumes index->z_stream->next_out is ensured to be not
+ * NULL before calling, although no output should be produced into next_out.
+ * This is because inflate() returns Z_STREAM_ERROR if next_out is NULL, even if
+ * avail_in is equal to zero.
+ */
+static int read_headers(zidx_index* index,
+                        zidx_block_callback block_callback,
+                        void *callback_context)
+{
+    /* Flag to check if reading header is completed. */
+    int header_completed;
+
+    /* Used for storing number of bytes read from stream. */
+    int s_read_len;
+
+    /* Used for storing return value of stream functions. */
+    int s_ret;
+
+    /* Used for storing return value of zlib calls. */
+    int z_ret;
+
+    /* Aliases for frequently used members of index. */
+    zidx_stream* stream = index->comp_stream;
+    z_stream* zs = index->z_stream;
+    uint8_t* buf = index->comp_data_buffer;
+    int buf_len  = index->comp_data_buffer_size;
+
+    zs->next_in   = buf;
+    zs->avail_in  = 0;
+
+    header_completed = 0;
+    while (!header_completed) {
+        /* Read from stream if no data is available in buffer. */
+        if (zs->avail_in == 0) {
+            s_read_len = zidx_stream_read(stream, buf, buf_len);
+            s_ret = zidx_stream_error(stream);
+            if (s_ret) {
+                ZX_LOG("ERROR: Reading from stream (%d).\n", s_ret);
+                return ZX_ERR_STREAM_READ;
+            }
+            if (s_read_len == 0) {
+                ZX_LOG("ERROR: Unexpected EOF while reading file header (%d).\n",
+                       s_ret);
+                return ZX_ERR_STREAM_EOF;
+            }
+            zs->next_in  = buf;
+            zs->avail_in = s_read_len;
+        }
+
+        /* Inflate until block boundary. First block boundary is after header,
+         * just before the first block. */
+        z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
+
+        if (z_ret == Z_OK) {
+            /* Done if in block boundary. */
+            if (is_on_block_boundary(zs)) {
+                ZX_LOG("Done reading header.\n");
+                header_completed = 1;
+            } else {
+                ZX_LOG("Read part of header. Continuing...");
+            }
+        } else {
+            ZX_LOG("Error reading header (%d).\n", z_ret);
+            return ZX_ERR_ZLIB(z_ret);
+        }
+    }
+
+    /* Call block boundary callback if exists. For this first call uncompressed
+     * offset in index->offset should be equal to 0. */
+    if (block_callback) {
+        s_ret = (*block_callback)(callback_context,
+                                  index,
+                                  &index->offset,
+                                  0);
+        if (s_ret != 0) {
+            ZX_LOG("WARNING: Callback returned non-zero (%d). "
+                   "Returning from function.", s_ret);
+            return ZX_ERR_CALLBACK(s_ret);
+        }
+    }
+    return ZX_RET_OK;
+}
+
 zidx_index* zidx_index_create()
 {
     zidx_index *index;
