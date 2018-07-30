@@ -32,6 +32,8 @@ AC_FUNC_ERROR_AT_LINE
 AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 
+AC_SUBST(ZX_EXTRA_CFLAGS)
+
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  tests/Makefile])
