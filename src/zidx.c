@@ -147,7 +147,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 
     /* Use zlib to inflate data. */
     z_ret = inflate(zs, flush);
-    if (z_ret != Z_OK) {
+    if (z_ret != Z_OK && z_ret != Z_STREAM_END) {
         ZX_LOG("ERROR: inflate (%d).\n", z_ret);
         return z_ret;
     }
@@ -180,8 +180,8 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
         index->offset.comp_byte = 0;
     }
 
-    /* We return Z_OK here, as z_ret should already be Z_OK at this point. */
-    return Z_OK;
+    /* z_ret can be either Z_OK or Z_STREAM_END in here. */
+    return z_ret;
 }
 
 /**
