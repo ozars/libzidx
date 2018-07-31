@@ -56,8 +56,8 @@ int (*zidx_stream_write_callback)(void *stream_context,
  * \param offset         Number of bytes relative to the \p whence.
  * \param whence         Position used as reference for the \p offset.
  *
- * \return Nonnegative value on success.
- * \return Negative value on error.
+ * \return Zero on success.
+ * \return Nonzero on error.
  */
 typedef
 int (*zidx_stream_seek_callback)(void *stream_context, off_t offset,

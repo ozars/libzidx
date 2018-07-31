@@ -750,91 +750,180 @@ int zidx_seek(zidx_index* index, off_t offset, int whence)
     return zidx_seek_advanced(index, offset, whence, NULL, NULL);
 }
 
-int zidx_seek_advanced(zidx_index* index, off_t offset, int whence,
+int zidx_seek_advanced(zidx_index* index,
+                       off_t offset,
+                       int whence,
                        zidx_block_callback block_callback,
                        void *callback_context)
 {
     /* TODO: If this function fails to reset z_stream, it will leave z_stream in
      * an invalid state. Must be handled. */
+
+    /* Used for storing number of bytes read from stream. */
+    int s_read_len;
+
+    /* Used for storing return value of stream functions. */
+    int s_ret;
+
+    /* Used for storing return value of zlib calls. */
     int z_ret;
-    int f_ret;
+
+    /* Used for storing return value of zidx calls. */
+    int zx_ret;
+
+    /* Used for storing shared byte between two blocks in the boundary, if they
+     * share any. */
     uint8_t byte;
+
+    /* Used for finding the checkpoint preceding offset. */
     zidx_checkpoint *checkpoint;
     int checkpoint_idx;
+
+    /* Number of bytes remaining to arrive given offset. After seeking to
+     * checkpoint, the rest of offset is disposed using zidx_read. */
     off_t num_bytes_remaining;
+
+    /* Number of bytes to dispose for next zidx_read call. */
     int num_bytes_next;
 
-    /* TODO: Implement whence */
+    /* TODO: Implement whence. Currently it is ignored. */
 
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
 
     if (checkpoint == NULL) {
-        ZX_LOG("[SEEK] No checkpoint found.\n");
+        ZX_LOG("No checkpoint found.\n");
 
-        f_ret = index->comp_stream->seek(
-                                        index->comp_stream->context,
-                                        0,
-                                        ZX_SEEK_SET);
-        if (f_ret < 0) return -2;
+        /* Seek to the beginning of file, since no checkpoint has been found. */
+        s_ret = zidx_stream_seek(index->comp_stream, 0, ZX_SEEK_SET);
+        if (s_ret < 0) {
+            ZX_LOG("ERROR: Couldn't seek in stream (%d).\n", s_ret);
+            return ZX_ERR_STREAM_SEEK;
+        }
 
-        index->stream_state = ZX_STATE_FILE_HEADERS;
-        index->offset.comp = 0;
-        index->offset.comp_byte = 0;
+        /* Reset stream states and offsets. TODO: It may be unnecessary to update
+         * comp_byte and comp_bits_count. */
+        index->stream_state           = ZX_STATE_FILE_HEADERS;
+        index->offset.comp            = 0;
+        index->offset.comp_byte       = 0;
         index->offset.comp_bits_count = 0;
-        index->offset.uncomp = 0;
+        index->offset.uncomp          = 0;
+
+        /* Dispose if there's anything in input buffer. */
         index->z_stream->avail_in = 0;
     } else if (
             index->offset.comp < checkpoint->offset.comp
             || index->offset.comp > offset) {
-        ZX_LOG("[SEEK] Checkpoint found. (comp: %ld, uncomp: %ld)\n",
-                checkpoint->offset.comp, checkpoint->offset.uncomp);
-        /* TODO: Fix window size */
-        z_ret = initialize_inflate(index, index->z_stream, -MAX_WBITS);
-        if (z_ret != Z_OK) return -3;
+        /* If offset is between checkpoint and current index offset, jump to the
+         * checkpoint. */
+        ZX_LOG("Jumping to checkpoint (idx: %d, comp: %ld, uncomp: %ld).\n",
+                checkpoint_idx, checkpoint->offset.comp,
+                checkpoint->offset.uncomp);
 
-        f_ret = index->comp_stream->seek(index->comp_stream->context,
-                                         checkpoint->offset.comp,
-                                         ZX_SEEK_SET);
-        if (f_ret < 0) return -4;
-        /* TODO: Add stream eof check. */
+        /* Initialize as deflate. */
+        z_ret = initialize_inflate(index, index->z_stream, -index->window_bits);
+        if (z_ret != Z_OK) {
+            ZX_LOG("ERROR: inflate initialization returned error (%d).\n",
+                   z_ret);
+            return ZX_ERR_ZLIB(z_ret);
+        }
 
+        /* Seek to the checkpoint offset in compressed stream. */
+        s_ret = zidx_stream_seek(index->comp_stream,
+                                 checkpoint->offset.comp,
+                                 ZX_SEEK_SET);
+        if (s_ret != 0) {
+            ZX_LOG("ERROR: Couldn't seek in stream (%d).\n", s_ret);
+            return ZX_ERR_STREAM_SEEK;
+        }
+
+        /* Handle if there is a byte shared between two consecutive blocks. */
         if (checkpoint->offset.comp_bits_count > 0) {
+            /* Higher bits of the byte should be pushed to zlib before calling
+             * inflate. */
             byte = checkpoint->offset.comp_byte;
             byte >>= (8 - checkpoint->offset.comp_bits_count);
 
+            /* Push these bits to zlib. */
             z_ret = inflatePrime(index->z_stream,
-                                 checkpoint->offset.comp_bits_count, byte);
-            if (z_ret != Z_OK) return -6;
+                                 checkpoint->offset.comp_bits_count,
+                                 byte);
+            if (z_ret != Z_OK) {
+                ZX_LOG("ERROR: inflatePrime error (%d).\n", z_ret);
+                return ZX_ERR_ZLIB(z_ret);
+            }
         }
 
-        z_ret = inflateSetDictionary(index->z_stream, checkpoint->window_data,
+        /* Copy window from checkpoint. */
+        z_ret = inflateSetDictionary(index->z_stream,
+                                     checkpoint->window_data,
                                      index->window_size);
-        if (z_ret != Z_OK) return -7;
+        if (z_ret != Z_OK) {
+            ZX_LOG("ERROR: inflateSetDictionary error (%d).\n", z_ret);
+            return ZX_ERR_ZLIB(z_ret);
+        }
 
-        index->stream_state = ZX_STATE_DEFLATE_BLOCKS;
-        index->offset.comp = checkpoint->offset.comp;
+        /* Set stream states and offsets. TODO: It may be unnecessary to update
+         * comp_byte and comp_bits_count. */
+        index->stream_state           = ZX_STATE_DEFLATE_BLOCKS;
+        index->offset.comp            = checkpoint->offset.comp;
+        index->offset.comp_byte       = byte;
         index->offset.comp_bits_count = checkpoint->offset.comp_bits_count;
-        index->offset.uncomp = checkpoint->offset.uncomp;
+        index->offset.uncomp          = checkpoint->offset.uncomp;
+
+        /* Dispose if there's anything in input buffer. */
         index->z_stream->avail_in = 0;
     }
 
+    /* Whether we jump to somewhere in file or not, we need to consume remaining
+     * bytes until the offset by decompressing. */
     num_bytes_remaining = offset - index->offset.uncomp;
-    while(num_bytes_remaining > 0) {
+    while (num_bytes_remaining > 0) {
+        /* Number of bytes going to consumed in next zidx read call is equal to
+         * min(num_bytes_remaining, seeking_data_buffer_size). */
         num_bytes_next =
             (num_bytes_remaining > index->seeking_data_buffer_size ?
                 index->seeking_data_buffer_size :
                 num_bytes_remaining);
-        f_ret = zidx_read_advanced(index, index->seeking_data_buffer,
-                                   num_bytes_next, block_callback,
-                                   callback_context);
-        if(f_ret < 0) return -8;
-        if(f_ret == 0) return 1;
 
-        num_bytes_remaining -= f_ret;
+        /* Read next compressed data and decompress it using internal seeking
+         * buffer. */
+        s_read_len = zidx_read_advanced(index,
+                                        index->seeking_data_buffer,
+                                        num_bytes_next,
+                                        block_callback,
+                                        callback_context);
+        /* Handle error. */
+        if (s_read_len < 0) {
+            ZX_LOG("ERROR: Couldn't decompress remaining data while "
+                   "seeking (%d)\n.", s_read_len);
+            return s_read_len;
+        }
+
+        /* Handle end-of-file. */
+        if (s_read_len == 0) {
+            ZX_LOG("ERROR: Unexpected end-of-file while decompressing remaining "
+                   "data for seeking (%d)\n.", s_read_len);
+            return ZX_ERR_STREAM_EOF;
+        }
+
+        /* Decrease number of bytes read. */
+        num_bytes_remaining -= s_read_len;
+
+        #ifdef ZX_DEBUG
+        /* Normally this should be unnecessary, since zidx_read_advanced can't
+         * return more than buffer length, but anyway let's check it in
+         * debugging mode. */
+        if (num_bytes_remaining < 0) {
+            ZX_LOG("ERROR: Screwed number of bytes remaining while reading for "
+                   "seeking. Check the code. (num_bytes_remaining: %jd)\n",
+                   (intmax_t) num_bytes_remaining);
+            return ZX_ERR_CORRUPTED;
+        }
+        #endif
     }
 
-    return 0;
+    return ZX_RET_OK;
 }
 
 off_t zidx_tell(zidx_index* index);

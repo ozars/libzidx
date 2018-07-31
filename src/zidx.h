@@ -33,6 +33,7 @@ typedef struct z_stream_s z_stream;
 #define ZX_ERR_INFLATE_INIT (-4)
 #define ZX_ERR_STREAM_READ (-5)
 #define ZX_ERR_STREAM_EOF (-6)
+#define ZX_ERR_STREAM_SEEK (-7)
 
 #define ZX_ERR_ZLIB(err) (-64 + err)
 #define ZX_ERR_CALLBACK(err) (-16384 + err)
