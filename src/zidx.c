@@ -1095,17 +1095,40 @@ int zidx_fill_checkpoint(zidx_index* index,
                          zidx_checkpoint* new_checkpoint,
                          zidx_checkpoint_offset* offset)
 {
+    /* TODO: Remove offset argument as it is already a member of index.
+     * Alternatively, and preferably, remove index if you use dict_length for
+     * window_size. */
+
+    /* Used for storing return value of zlib calls. */
     int z_ret;
+
+    /* Length of dictionary, a.k.a. sliding window. */
     unsigned int dict_length;
 
-    if (index == NULL) return -1;
-    if (new_checkpoint == NULL) return -2;
-    if (offset == NULL) return -3;
-
-    if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = (uint8_t *) malloc(index->window_size);
+    /* Sanity check. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (new_checkpoint == NULL) {
+        ZX_LOG("ERROR: new_checkpoint is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (offset == NULL) {
+        ZX_LOG("ERROR: offset is NULL.\n");
+        return ZX_ERR_PARAMS;
     }
 
+    /* Allocate space for window_data if there isn't one. */
+    if (new_checkpoint->window_data == NULL) {
+        new_checkpoint->window_data = (uint8_t*)malloc(index->window_size);
+        if (new_checkpoint->window_data == NULL) {
+            ZX_LOG("ERROR: Couldn't allocate memory for window data.\n");
+            return ZX_ERR_MEMORY;
+        }
+    }
+
+    /* Copy current offset to checkpoint offset. */
     memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
 
     /* TODO: Use dict_length to store variable length window_data maybe? */
@@ -1113,9 +1136,11 @@ int zidx_fill_checkpoint(zidx_index* index,
 
     z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
                                  &dict_length);
-    if (z_ret != Z_OK) return -4;
-
-    return 0;
+    if (z_ret != Z_OK) {
+        ZX_LOG("ERROR: inflateGetDictionary returned error (%d).\n", z_ret);
+        return ZX_ERR_ZLIB(z_ret);
+    }
+    return ZX_RET_OK;
 }
 
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
