@@ -1285,16 +1285,34 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
 {
+    /* New list to create. List is not created in-place to protect existing
+     * list (index->list). */
     zidx_checkpoint *new_list;
 
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (nmembers <= 0) {
+        ZX_LOG("ERROR: Number of items to extend (%d) is not positive.",
+               nmembers);
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Allocate memory for nmembers more. */
     new_list = (zidx_checkpoint*) realloc(index->list, sizeof(zidx_checkpoint)
                                            * (index->list_capacity + nmembers));
-    if(!new_list) return -1;
+    if(!new_list) {
+        ZX_LOG("ERROR: Couldn't allocate memory for the extended list.\n");
+        return ZX_ERR_MEMORY;
+    }
 
+    /* Update existing list. */
     index->list           = new_list;
     index->list_capacity += nmembers;
 
-    return 0;
+    return ZX_RET_OK;
 }
 
 void zidx_shrink_index_size(zidx_index* index);
