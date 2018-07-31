@@ -631,25 +631,33 @@ int zidx_index_destroy(zidx_index* index)
     zidx_checkpoint *end;
 
     /* If index is NULL, okay is returned (to be consistent with free). */
-    if (!index) return ZX_RET_OK;
+    if (!index) {
+        ZX_LOG("Nothing is destroyed in index, since it's NULL.\n");
+        return ZX_RET_OK;
+    }
 
     /* Unless an error happens, okay will be returned. */
     ret = ZX_RET_OK;
 
-    /* If z_stream should not be NULL. */
+    /* z_stream should not be NULL. */
     if (!index->z_stream) {
+        ZX_LOG("ERROR: index->z_stream is NULL.\n");
         ret = ZX_ERR_CORRUPTED;
     } else {
         /* Release internal buffers of z_stream. */
         if (index->inflate_initialized) {
             z_ret = inflateEnd(index->z_stream);
-            if (z_ret != Z_OK) { ret = ZX_ERR_CORRUPTED; }
+            if (z_ret != Z_OK) {
+                ZX_LOG("ERROR: inflateEnd returned error (%d).\n", z_ret);
+                ret = ZX_ERR_CORRUPTED;
+            }
         }
         free(index->z_stream);
     }
 
     /* Checkpoint list should not be NULL. */
     if (!index->list) {
+        ZX_LOG("ERROR: index->list is NULL.\n");
         ret = ZX_ERR_CORRUPTED;
     } else {
         /* Release window data on each checkpoint. */
