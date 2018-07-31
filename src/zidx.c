@@ -415,16 +415,35 @@ static int read_gzip_trailer(zidx_index* index)
     int read_bytes;
     int s_read_len;
     uint8_t trailer[8];
-    z_stream* zs;
 
-    zs = index->z_stream;
+    /* Aliases. */
+    zidx_stream* stream = index->comp_stream;
+    z_stream* zs = index->z_stream;
 
+    /* Sanity check. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Number of bytes already read into buffer. */
     read_bytes = zs->avail_in > 8 ? 8 : zs->avail_in;
+
+    /* Copy those bytes from buffer to trailer, and update buffer data. */
     memcpy(trailer, zs->next_in, read_bytes);
-    zs->next_in += read_bytes;
+    zs->next_in  += read_bytes;
     zs->avail_in -= read_bytes;
+
+    /* If there are more data to be read for trailer... */
     if (read_bytes < 8) {
-        s_read_len = zidx_stream_read(index->comp_stream, trailer, 8 - read_bytes);
+        /* ...read it from stream. */
+        s_read_len = zidx_stream_read(stream, trailer, 8 - read_bytes);
+
+        if (zidx_stream_error(stream) != 0) {
+            ZX_LOG("ERROR: Error while reading remaining %d bytes of trailer "
+                   " from stream.\n", 8 - read_bytes);
+            return ZX_ERR_STREAM_READ;
+        }
         if (s_read_len != 8 - read_bytes) {
             ZX_LOG("ERROR: File ended before trailer ends.");
             return ZX_ERR_STREAM_EOF;
