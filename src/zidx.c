@@ -787,7 +787,12 @@ int zidx_read_advanced(zidx_index* index,
             return ZX_ERR_CORRUPTED;
 
         case ZX_STATE_END_OF_FILE:
+            ZX_LOG("No reading is made since state is end-of-file.\n");
             return 0;
+
+        default:
+            ZX_LOG("ERROR: Unknown state (%d).\n", (int)index->stream_state);
+            return ZX_ERR_CORRUPTED;
 
     } /* end of switch(index->stream_state) */
 
