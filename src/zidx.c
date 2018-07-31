@@ -138,6 +138,19 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
     /* Used for return value. */
     int z_ret;
 
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (zs == NULL) {
+        ZX_LOG("ERROR: z_stream argument zs is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Note: No sanity check is applied to flush. Instead error returned by
+     * inflate will be passed in case of an invalid flush value. */
+
     /* Save number of bytes in input/output buffers. */
     available_comp_bytes   = zs->avail_in;
     available_uncomp_bytes = zs->avail_out;
@@ -202,16 +215,31 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs, int flush)
 static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
 {
     int z_ret;
+
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (zs == NULL) {
+        ZX_LOG("ERROR: z_stream argument zs is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+
     if (!index->inflate_initialized) {
         z_ret = inflateInit2(zs, window_bits);
         if (z_ret == Z_OK) {
             index->inflate_initialized = 1;
             ZX_LOG("Initialized inflate successfully.\n");
+        } else {
+            ZX_LOG("ERROR: inflateInit2 returned error (%d).\n", z_ret);
         }
     } else {
         z_ret = inflateReset2(zs, window_bits);
         if (z_ret == Z_OK) {
             ZX_LOG("Reset inflate successfully.\n");
+        } else {
+            ZX_LOG("ERROR: inflateReset2 returned error (%d).\n", z_ret);
         }
     }
     return z_ret;
@@ -248,6 +276,12 @@ static int read_headers(zidx_index* index,
 
     /* Used for storing return value of zlib calls. */
     int z_ret;
+
+    /* Sanity check. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
 
     /* Aliases for frequently used members of index. */
     zidx_stream* stream = index->comp_stream;
@@ -326,6 +360,12 @@ static int read_deflate_blocks(zidx_index* index,
 
     /* Used for storing return value of zlib calls. */
     int z_ret;
+
+    /* Sanity check. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
 
     /* Aliases for frequently used members of index. */
     zidx_stream* stream = index->comp_stream;
@@ -416,15 +456,15 @@ static int read_gzip_trailer(zidx_index* index)
     int s_read_len;
     uint8_t trailer[8];
 
-    /* Aliases. */
-    zidx_stream* stream = index->comp_stream;
-    z_stream* zs = index->z_stream;
-
     /* Sanity check. */
     if (index == NULL) {
         ZX_LOG("ERROR: index is NULL.\n");
         return ZX_ERR_PARAMS;
     }
+
+    /* Aliases. */
+    zidx_stream* stream = index->comp_stream;
+    z_stream* zs = index->z_stream;
 
     /* Number of bytes already read into buffer. */
     read_bytes = zs->avail_in > 8 ? 8 : zs->avail_in;
@@ -715,9 +755,6 @@ int zidx_read_advanced(zidx_index* index,
      * for denoting stream type as well. */
     int window_bits;
 
-    /* Aliases for frequently used index members. */
-    z_stream *zs = index->z_stream;
-
     /* Sanity checks. */
     if (index == NULL) {
         ZX_LOG("ERROR: index is NULL.\n");
@@ -733,6 +770,9 @@ int zidx_read_advanced(zidx_index* index,
         ZX_LOG("ERROR: nbytes can't be negative.\n");
         return ZX_ERR_PARAMS;
     }
+
+    /* Aliases. */
+    z_stream *zs = index->z_stream;
 
     ZX_LOG("Reading at (comp: %jd, uncomp: %jd)\n", (intmax_t)index->offset.comp,
            (intmax_t)index->offset.uncomp);
@@ -885,7 +925,18 @@ int zidx_seek_advanced(zidx_index* index,
     /* Number of bytes to dispose for next zidx_read call. */
     int num_bytes_next;
 
-    /* TODO: Implement whence. Currently it is ignored. */
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (offset < 0) {
+        ZX_LOG("ERROR: offset (%jd) is negative.\n", (intmax_t)offset);
+        return ZX_ERR_PARAMS;
+    }
+
+    /* TODO: Implement whence. Currently it is ignored. Implement sanity check
+     * for it as well. */
 
     checkpoint_idx = zidx_get_checkpoint(index, offset);
     checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
