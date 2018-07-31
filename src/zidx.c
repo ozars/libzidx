@@ -1145,25 +1145,61 @@ int zidx_fill_checkpoint(zidx_index* index,
 
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 {
-    int last_uncomp;
-    if (index == NULL) return -1;
-    if (checkpoint == NULL) return -2;
+    /* Used for storing return value of zidx calls. */
+    int zx_ret;
 
-    if (index->list_capacity == index->list_count) {
-        zidx_extend_index_size(index, index->list_count);
+    /* Convenience variables. They keep uncompressed offsets of the last
+     * checkpoint and current checkpoint. Current implementation requires added
+     * checkpoints to be ordered in an array, therefore we check for the
+     * uncompressed offset of last checkpoint before adding a new checkpoint. A
+     * better approach would be using some balanced binary tree implementation,
+     * which would allow inserting to any place in O(lgn). */
+    /* TODO: Consider using balanced BST for index->list. However, let's not go
+     * feature creep for now, shall we? */
+    off_t last_uncomp;
+    off_t chpt_uncomp;
+
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (checkpoint == NULL) {
+        ZX_LOG("ERROR: checkpoint is NULL.\n");
+        return ZX_ERR_PARAMS;
     }
 
+    /* If there are any checkpoints on the list, the new checkpoint should have
+     * greater uncompressed offset than that of last checkpoint. */
     if (index->list_count > 0) {
         last_uncomp = index->list[index->list_count - 1].offset.uncomp;
-        if (checkpoint->offset.uncomp <= last_uncomp) {
-            return -3;
+        chpt_uncomp = checkpoint->offset.uncomp;
+        if (chpt_uncomp <= last_uncomp) {
+            ZX_LOG("ERROR: Can't add checkpoint, its uncompressed offset (%jd) "
+                   "is less than that of last checkpoint (%jd).\n",
+                   (intmax_t)chpt_uncomp, (intmax_t)last_uncomp);
+            return ZX_ERR_INVALID_OP;
         }
     }
 
+    /* Open some space in list if needed. */
+    if (index->list_capacity == index->list_count) {
+        /* Double the list size. */
+        zx_ret = zidx_extend_index_size(index, index->list_count);
+        if (zx_ret != ZX_RET_OK) {
+            ZX_LOG("ERROR: Couldn't extend index size (%d).\n", zx_ret);
+            return zx_ret;
+        }
+    }
+
+    /* Add new checkpoint.*/
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
     index->list_count++;
 
-    return 0;
+    /* TODO: Note in the documentation, that checkpoint can be freed after this
+     * call. Not the window_data member of it though. */
+
+    return ZX_RET_OK;
 }
 
 int zidx_get_checkpoint(zidx_index* index, off_t offset)
