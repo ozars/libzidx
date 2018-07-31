@@ -1221,7 +1221,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     /* Check the last element first. We check it in here so that we don't
      * account for it in every iteartion of the loop below. */
     if(ZX_OFFSET_(right) < offset) {
-        return idx;
+        return right;
     }
 
     /* Binary search for index. */
