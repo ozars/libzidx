@@ -1204,6 +1204,11 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 
 int zidx_get_checkpoint(zidx_index* index, off_t offset)
 {
+    /* TODO: Return EOF error if EOF is known and offset is beyond it. */
+    /* TODO: Add more logging for returns. I don't feel like doing it today. */
+
+    /* A local definition for a cumbersome access. Undefed at the end of this
+     * function. */
     #define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
 
     /* Variables used for binary search. */
@@ -1212,8 +1217,22 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     /* Return value holding the index or error number. */
     int idx;
 
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (offset < 0) {
+        ZX_LOG("ERROR: offset (%jd) is negative.\n", (intmax_t)offset);
+        return ZX_ERR_PARAMS;
+    }
+
     /* Return not found if list is empty. */
-    if(index->list_count == 0) return -1;
+    if(index->list_count == 0) {
+        ZX_LOG("ERROR: List is empty, so checkpoint for given offset (%jd) is "
+               "not found.\n", (intmax_t)offset);
+        return ZX_ERR_NOT_FOUND;
+    }
 
     left  = 0;
     right = index->list_count - 1;
@@ -1224,9 +1243,16 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
         return right;
     }
 
-    /* Binary search for index. */
-    while (left < right) {
+    /* Shortcut: Since list is ordered, if offset is less than first offset,
+     * than it is not covered. */
+    if (offset < ZX_OFFSET_(left)) {
+        ZX_LOG("ERROR: Not found, offset (%jd) is less than first offset (%jd).",
+               (intmax_t)offset, (intmax_t)ZX_OFFSET_(left));
+        return ZX_ERR_NOT_FOUND;
+    }
 
+    /* Binary search for a lowerbound index. */
+    while (left < right) {
         idx = (left + right) / 2;
 
         /* If current offset is greater, we need to move the range to left by
@@ -1246,7 +1272,13 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
         }
     }
 
-    return -1;
+    /* left >= right, meaning that point range is not found. THIS STATE SHOULD BE
+     * UNREACHABLE. */
+    ZX_LOG("ERROR: If you see this, there's something terribly wrong in this "
+           "function. The binary search failed, but it shouldn't have done so, "
+           "since we compared offset to the that of first checkpoint. Go check "
+           "the code.\n");
+    return ZX_ERR_NOT_FOUND;
 
     #undef ZX_OFFSET_
 }
