@@ -23,7 +23,8 @@ typedef enum zidx_stream_state
     ZX_STATE_INVALID,
     ZX_STATE_FILE_HEADERS,
     ZX_STATE_DEFLATE_BLOCKS,
-    ZX_STATE_FILE_TRAILER
+    ZX_STATE_FILE_TRAILER,
+    ZX_STATE_END_OF_FILE
 } zidx_stream_state;
 
 struct zidx_checkpoint_offset_s
@@ -286,7 +287,7 @@ static int read_headers(zidx_index* index,
                 ZX_LOG("Done reading header.\n");
                 header_completed = 1;
             } else {
-                ZX_LOG("Read part of header. Continuing...");
+                ZX_LOG("Read part of header. Continuing...\n");
             }
         } else {
             ZX_LOG("Error reading header (%d).\n", z_ret);
@@ -303,7 +304,7 @@ static int read_headers(zidx_index* index,
                                   0);
         if (s_ret != 0) {
             ZX_LOG("WARNING: Callback returned non-zero (%d). "
-                   "Returning from function.", s_ret);
+                   "Returning from function.\n", s_ret);
             return ZX_ERR_CALLBACK(s_ret);
         }
     }
@@ -357,30 +358,44 @@ static int read_deflate_blocks(zidx_index* index,
         } else {
             z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
         }
-        if (z_ret == Z_OK) {
+        if (z_ret == Z_OK || z_ret == Z_STREAM_END) {
             if (is_on_block_boundary(zs)) {
-                ZX_LOG("[BLOCKS] On block boundary.\n");
+                ZX_LOG("On block boundary.\n");
                 if (is_last_deflate_block(zs)) {
-                    ZX_LOG("[BLOCKS] Last block.\n");
+                    ZX_LOG("Also last block.\n");
                     reading_completed = 1;
+                    if (index->stream_type == ZX_STREAM_GZIP ||
+                            index->stream_type == ZX_STREAM_GZIP_OR_ZLIB) {
+                        index->stream_state = ZX_STATE_FILE_TRAILER;
+                    }
                 }
                 if (block_callback != NULL) {
-                    ZX_LOG("[BLOCKS] Block boundary callback.\n");
+                    ZX_LOG("Calling block boundary callback.\n");
                     s_ret = (*block_callback)(callback_context,
-                                              index, &index->offset,
+                                              index,
+                                              &index->offset,
                                               reading_completed);
-                    if(s_ret != 0) return -100;
+                    if (s_ret != 0) {
+                        ZX_LOG("WARNING: Callback returned non-zero (%d). "
+                               "Returning from function.\n", s_ret);
+                        return ZX_ERR_CALLBACK(s_ret);
+                    }
                 }
             }
             if (zs->avail_out == 0) {
-                ZX_LOG("[BLOCKS] Buffer is full.\n");
+                ZX_LOG("Buffer is full.\n");
                 reading_completed = 1;
             }
-        } else if (z_ret == Z_STREAM_END) {
-            ZX_LOG("End of stream reached.\n");
-            reading_completed = 1;
+            if (z_ret == Z_STREAM_END) {
+                ZX_LOG("End of stream reached.\n");
+                reading_completed = 1;
+                if (index->stream_type == ZX_STREAM_GZIP ||
+                        index->stream_type == ZX_STREAM_GZIP_OR_ZLIB) {
+                    index->stream_state = ZX_STATE_FILE_TRAILER;
+                }
+            }
         } else {
-            if(zs->msg != NULL) {
+            if (zs->msg != NULL) {
                 ZX_LOG("ERROR: inflate_and_update_offset returned error (%d): "
                        " %s\n", z_ret, zs->msg);
             } else {
@@ -392,6 +407,29 @@ static int read_deflate_blocks(zidx_index* index,
         }
     } /* while (!read_completed) */
 
+    return ZX_RET_OK;
+}
+
+static int read_gzip_trailer(zidx_index* index)
+{
+    int read_bytes;
+    int s_read_len;
+    uint8_t trailer[8];
+    z_stream* zs;
+
+    zs = index->z_stream;
+
+    read_bytes = zs->avail_in > 8 ? 8 : zs->avail_in;
+    memcpy(trailer, zs->next_in, read_bytes);
+    zs->next_in += read_bytes;
+    zs->avail_in -= read_bytes;
+    if (read_bytes < 8) {
+        s_read_len = zidx_stream_read(index->comp_stream, trailer, 8 - read_bytes);
+        if (s_read_len != 8 - read_bytes) {
+            ZX_LOG("ERROR: File ended before trailer ends.");
+            return ZX_ERR_STREAM_EOF;
+        }
+    }
     return ZX_RET_OK;
 }
 
@@ -637,9 +675,9 @@ int zidx_read_advanced(zidx_index* index,
                        zidx_block_callback block_callback,
                        void *callback_context)
 {
-    /* TODO: Implement Z_SYNC_FLUSH option. */
     /* TODO: Implement support for concatanated gzip streams. */
-    /* TODO: Implement window bits to reflect reality (window size). */
+    ZX_LOG("Reading at (comp: %jd, uncomp: %jd)\n", (intmax_t)index->offset.comp,
+           (intmax_t)index->offset.uncomp);
 
     /* Return value for private (static) function calls. */
     int ret;
@@ -727,17 +765,29 @@ int zidx_read_advanced(zidx_index* index,
                 ZX_LOG("ERROR: While reading deflate blocks (%d).\n", ret);
                 return ret;
             }
-            break;
-
+            /* Break switch if there are more blocks. */
+            if (index->stream_state != ZX_STATE_FILE_TRAILER) {
+                break;
+            }
         case ZX_STATE_FILE_TRAILER:
-            /* TODO: Implement this. */
-            ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
-            return ZX_ERR_CORRUPTED;
-
+            /* TODO/BUG: Implement zlib separately. THIS IS TEMPORARY!!! */
+            if (index->stream_type != ZX_STREAM_DEFLATE) {
+                ret = read_gzip_trailer(index);
+                if (ret != ZX_RET_OK) {
+                    ZX_LOG("ERROR: While parsing gzip file trailer (%d).\n",
+                           ret);
+                    return ret;
+                }
+            }
+            index->stream_state = ZX_STATE_END_OF_FILE;
+            break;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
-            ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
+            ZX_LOG("ERROR: NOT IMPLEMENTED YET.\n");
             return ZX_ERR_CORRUPTED;
+
+        case ZX_STATE_END_OF_FILE:
+            return 0;
 
     } /* end of switch(index->stream_state) */
 
