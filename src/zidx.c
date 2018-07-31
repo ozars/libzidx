@@ -77,7 +77,7 @@ struct zidx_index_s
  *
  * \return The number of bits unused in the last consumed byte.
  */
-static uint8_t get_unused_bits_count(z_stream* zs)
+static inline uint8_t get_unused_bits_count(z_stream* zs)
 {
     return zs->data_type & 7;
 }
@@ -92,7 +92,7 @@ static uint8_t get_unused_bits_count(z_stream* zs)
  *
  * \return 64 if inflate stopped on block boundary, 0 otherwise.
  */
-static int is_last_deflate_block(z_stream* zs)
+static inline int is_last_deflate_block(z_stream* zs)
 {
     return zs->data_type & 64;
 }
@@ -107,7 +107,7 @@ static int is_last_deflate_block(z_stream* zs)
  *
  * \return 128 if inflate stopped on block boundary, 0 otherwise.
  */
-static int is_on_block_boundary(z_stream *zs)
+static inline int is_on_block_boundary(z_stream *zs)
 {
     return zs->data_type & 128;
 }
