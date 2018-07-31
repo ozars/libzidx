@@ -676,8 +676,6 @@ int zidx_read_advanced(zidx_index* index,
                        void *callback_context)
 {
     /* TODO: Implement support for concatanated gzip streams. */
-    ZX_LOG("Reading at (comp: %jd, uncomp: %jd)\n", (intmax_t)index->offset.comp,
-           (intmax_t)index->offset.uncomp);
 
     /* Return value for private (static) function calls. */
     int ret;
@@ -692,6 +690,25 @@ int zidx_read_advanced(zidx_index* index,
 
     /* Aliases for frequently used index members. */
     z_stream *zs = index->z_stream;
+
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (buffer == NULL) {
+        ZX_LOG("ERROR: buffer is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    /* TODO: I couldn't decide whether nbytes = 0 makes sense, so I left it as
+     * a valid option. Use with caution. */
+    if (nbytes < 0) {
+        ZX_LOG("ERROR: nbytes can't be negative.\n");
+        return ZX_ERR_PARAMS;
+    }
+
+    ZX_LOG("Reading at (comp: %jd, uncomp: %jd)\n", (intmax_t)index->offset.comp,
+           (intmax_t)index->offset.uncomp);
 
     switch (index->stream_state) {
         case ZX_STATE_FILE_HEADERS:
