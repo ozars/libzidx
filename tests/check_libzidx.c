@@ -19,7 +19,7 @@
 #endif
 
 const char *comp_file_path;
-zidx_comp_stream *comp_stream;
+zidx_stream *comp_stream;
 zidx_index *zx_index;
 uint8_t *uncomp_data;
 
@@ -58,11 +58,11 @@ void setup_stream_api()
     f = fopen(comp_file_path, "rb");
     ck_assert_msg(f, "Couldn't open compressed file.");
 
-    comp_stream = malloc(sizeof(zidx_comp_stream));
+    comp_stream = malloc(sizeof(zidx_stream));
     ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
                                "stream.");
 
-    comp_stream = zidx_comp_file_create(f);
+    comp_stream = zidx_stream_from_file(f);
     ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 }
 
@@ -82,6 +82,7 @@ void teardown_stream_api()
 START_TEST(test_comp_file_init)
 {
     ck_assert(comp_stream->read    == zidx_raw_file_read);
+    ck_assert(comp_stream->write   == zidx_raw_file_write);
     ck_assert(comp_stream->seek    == zidx_raw_file_seek);
     ck_assert(comp_stream->tell    == zidx_raw_file_tell);
     ck_assert(comp_stream->length  == zidx_raw_file_length);

@@ -25,6 +25,21 @@ extern "C" {
 typedef struct z_stream_s z_stream;
 #endif
 
+/* Return and error codes. */
+#define ZX_RET_OK (0)
+#define ZX_ERR_PARAMS (-1)
+#define ZX_ERR_MEMORY (-2)
+#define ZX_ERR_CORRUPTED (-3)
+#define ZX_ERR_INFLATE_INIT (-4)
+#define ZX_ERR_STREAM_READ (-5)
+#define ZX_ERR_STREAM_EOF (-6)
+#define ZX_ERR_STREAM_SEEK (-7)
+#define ZX_ERR_INVALID_OP (-8)
+#define ZX_ERR_NOT_FOUND (-9)
+
+#define ZX_ERR_ZLIB(err) (-64 + err)
+#define ZX_ERR_CALLBACK(err) (-16384 + err)
+
 /* index/checkpoint data types */
 
 typedef struct zidx_index_s zidx_index;
@@ -56,14 +71,14 @@ int (*zidx_block_callback)(void *context,
 
 zidx_index* zidx_index_create();
 int zidx_index_init(zidx_index* index,
-                    zidx_comp_stream* comp_stream);
+                    zidx_stream* comp_stream);
 int zidx_index_init_advanced(zidx_index* index,
-                             zidx_comp_stream* comp_stream,
+                             zidx_stream* comp_stream,
                              zidx_stream_type stream_type,
                              zidx_checksum_option checksum_option,
                              z_stream* z_stream_ptr,
                              int initial_capacity,
-                             unsigned int window_size,
+                             int window_size,
                              int comp_data_buffer_size,
                              int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
@@ -110,12 +125,12 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_checkpoint *offset);
 
 int zidx_import_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_import_filter_callback filter,
                          void *filter_context);
 
 int zidx_export_advanced(zidx_index *index,
-                         const zidx_index_stream *stream,
+                         const zidx_stream *stream,
                          zidx_export_filter_callback filter,
                          void *filter_context);
 
