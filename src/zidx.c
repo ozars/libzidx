@@ -1295,7 +1295,7 @@ int zidx_extend_index_size(zidx_index* index, int nmembers)
         return ZX_ERR_PARAMS;
     }
     if (nmembers <= 0) {
-        ZX_LOG("ERROR: Number of items to extend (%d) is not positive.",
+        ZX_LOG("ERROR: Number of items to extend (%d) is not positive.\n",
                nmembers);
         return ZX_ERR_PARAMS;
     }
@@ -1315,7 +1315,49 @@ int zidx_extend_index_size(zidx_index* index, int nmembers)
     return ZX_RET_OK;
 }
 
-void zidx_shrink_index_size(zidx_index* index);
+int zidx_shrink_index_size(zidx_index* index, int nmembers)
+{
+
+    /* New list to create. List is not created in-place to protect existing
+     * list (index->list). */
+    zidx_checkpoint *new_list;
+
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (nmembers <= 0) {
+        ZX_LOG("ERROR: Number of items to shrink (%d) is not positive.\n",
+               nmembers);
+        return ZX_ERR_PARAMS;
+    }
+    if (index->list_capacity < index->list_count + nmembers) {
+        ZX_LOG("ERROR: Shrinking requires deallocating existing elements.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (index->list_capacity < nmembers) {
+        ZX_LOG("ERROR: Number of members to shrink (%d) is greater than current "
+               "capacity (%d).\n", nmembers, index->list_capacity);
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Allocate memory for nmembers less. */
+    new_list = (zidx_checkpoint*) realloc(index->list, sizeof(zidx_checkpoint)
+                                           * (index->list_capacity - nmembers));
+    if(!new_list) {
+        ZX_LOG("ERROR: Couldn't allocate memory for the extended list.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    /* Update existing list. */
+    index->list           = new_list;
+    index->list_capacity -= nmembers;
+
+    return ZX_RET_OK;
+}
+
+int zidx_fit_index_size(zidx_index* index);
 
 /* TODO: Implement these. */
 int zidx_import_advanced(zidx_index *index,
