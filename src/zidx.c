@@ -552,8 +552,8 @@ int zidx_index_init_advanced(zidx_index* index,
         ZX_LOG("ERROR: Unknown checksum_option (%d).\n", (int) stream_type);
         return ZX_ERR_PARAMS;
     }
-    if (initial_capacity <= 0) {
-        ZX_LOG("ERROR: initial_capacity is nonpositive.\n");
+    if (initial_capacity < 0) {
+        ZX_LOG("ERROR: initial_capacity is negative.\n");
         return ZX_ERR_PARAMS;
     }
     if (window_size <= 0) {
@@ -605,12 +605,13 @@ int zidx_index_init_advanced(zidx_index* index,
     z_stream_ptr->avail_in = 0;
     z_stream_ptr->next_in  = Z_NULL;
 
-    /* Initialize list. Note: Currently initial_capacity can't be zero, as it
-     * was checked in above sabity checks. */
-    list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint) * initial_capacity);
-    if (!list) {
-        ZX_LOG("ERROR: Couldn't allocate memory for checkpoint list.\n");
-        goto memory_fail;
+    /* Initialize list if initial_capacity is not zero. */
+    if (initial_capacity > 0) {
+        list = (zidx_checkpoint*) malloc(sizeof(zidx_checkpoint) * initial_capacity);
+        if (!list) {
+            ZX_LOG("ERROR: Couldn't allocate memory for checkpoint list.\n");
+            goto memory_fail;
+        }
     }
 
     /* Initialize compressed data buffer. */
@@ -714,11 +715,14 @@ int zidx_index_destroy(zidx_index* index)
         free(index->z_stream);
     }
 
-    /* Checkpoint list should not be NULL. */
-    if (!index->list) {
-        ZX_LOG("ERROR: index->list is NULL.\n");
+    /* Checkpoint list should not be NULL if there is some capacity. */
+    if (!index->list && index->list_capacity > 0) {
+        ZX_LOG("ERROR: index->list is NULL, although capacity is %d.\n",
+               index->list_capacity);
         ret = ZX_ERR_CORRUPTED;
-    } else {
+
+    /* If it's NULL and there is some capacity, free it. */
+    } else if (index->list) {
         /* Release window data on each checkpoint. */
         end = index->list + index->list_count;
         for (it = index->list; it < end; it++) {
@@ -726,6 +730,8 @@ int zidx_index_destroy(zidx_index* index)
         }
         free(index->list);
     }
+    /* Else is unnecessary, since this practically means capacity is zero and
+     * list is NULL. Therefore, nothing to free.  */
 
     return ret;
 }
@@ -1168,6 +1174,11 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         ZX_LOG("ERROR: checkpoint is NULL.\n");
         return ZX_ERR_PARAMS;
     }
+    /* Check if list is corrupted. */
+    if (index->list == NULL && index->list_capacity != 0) {
+        ZX_LOG("ERROR: index list is NULL while capacity is not zero.\n");
+        return ZX_ERR_CORRUPTED;
+    }
 
     /* If there are any checkpoints on the list, the new checkpoint should have
      * greater uncompressed offset than that of last checkpoint. */
@@ -1184,8 +1195,9 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 
     /* Open some space in list if needed. */
     if (index->list_capacity == index->list_count) {
-        /* Double the list size. */
-        zx_ret = zidx_extend_index_size(index, index->list_count);
+        /* Double the list size. Plus one is added in case list count is
+         * currently zero. */
+        zx_ret = zidx_extend_index_size(index, index->list_count + 1);
         if (zx_ret != ZX_RET_OK) {
             ZX_LOG("ERROR: Couldn't extend index size (%d).\n", zx_ret);
             return zx_ret;
@@ -1300,7 +1312,8 @@ int zidx_extend_index_size(zidx_index* index, int nmembers)
         return ZX_ERR_PARAMS;
     }
 
-    /* Allocate memory for nmembers more. */
+    /* Allocate memory for nmembers more. index->list can be NULL if the
+     * capacity is 0. */
     new_list = (zidx_checkpoint*) realloc(index->list, sizeof(zidx_checkpoint)
                                            * (index->list_capacity + nmembers));
     if(!new_list) {
@@ -1342,7 +1355,8 @@ int zidx_shrink_index_size(zidx_index* index, int nmembers)
         return ZX_ERR_PARAMS;
     }
 
-    /* Allocate memory for nmembers less. */
+    /* Allocate memory for nmembers less. If nmembers is equal to list capacity,
+     * this call is equivalent to freeing list. */
     new_list = (zidx_checkpoint*) realloc(index->list, sizeof(zidx_checkpoint)
                                            * (index->list_capacity - nmembers));
     if(!new_list) {
