@@ -72,35 +72,35 @@ int (*zidx_block_callback)(void *context,
 zidx_index* zidx_index_create();
 int zidx_index_init(zidx_index* index,
                     zidx_stream* comp_stream);
-int zidx_index_init_advanced(zidx_index* index,
-                             zidx_stream* comp_stream,
-                             zidx_stream_type stream_type,
-                             zidx_checksum_option checksum_option,
-                             z_stream* z_stream_ptr,
-                             int initial_capacity,
-                             int window_size,
-                             int comp_data_buffer_size,
-                             int seeking_data_buffer_size);
+int zidx_index_init_ex(zidx_index* index,
+                       zidx_stream* comp_stream,
+                       zidx_stream_type stream_type,
+                       zidx_checksum_option checksum_option,
+                       z_stream* z_stream_ptr,
+                       int initial_capacity,
+                       int window_size,
+                       int comp_data_buffer_size,
+                       int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes);
-int zidx_read_advanced(zidx_index* index,
-                       uint8_t *buffer,
-                       int nbytes,
-                       zidx_block_callback block_callback,
-                       void *callback_context);
+int zidx_read_ex(zidx_index* index,
+                 uint8_t *buffer,
+                 int nbytes,
+                 zidx_block_callback block_callback,
+                 void *callback_context);
 int zidx_seek(zidx_index* index, off_t offset, int whence);
-int zidx_seek_advanced(zidx_index* index,
-                       off_t offset,
-                       int whence,
-                       zidx_block_callback block_callback,
-                       void *callback_context);
+int zidx_seek_ex(zidx_index* index,
+                 off_t offset,
+                 int whence,
+                 zidx_block_callback block_callback,
+                 void *callback_context);
 off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
 
 int zidx_build_index(zidx_index* index, off_t spacing_length);
-int zidx_build_index_advanced(zidx_index* index,
-                              zidx_block_callback block_callback,
-                              void *callback_context);
+int zidx_build_index_ex(zidx_index* index,
+                        zidx_block_callback block_callback,
+                        void *callback_context);
 
 zidx_checkpoint* zidx_create_checkpoint();
 int zidx_fill_checkpoint(zidx_index* index,
@@ -125,15 +125,15 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_index *index,
                                    zidx_checkpoint *offset);
 
-int zidx_import_advanced(zidx_index *index,
-                         const zidx_stream *stream,
-                         zidx_import_filter_callback filter,
-                         void *filter_context);
+int zidx_import_ex(zidx_index *index,
+                   const zidx_stream *stream,
+                   zidx_import_filter_callback filter,
+                   void *filter_context);
 
-int zidx_export_advanced(zidx_index *index,
-                         const zidx_stream *stream,
-                         zidx_export_filter_callback filter,
-                         void *filter_context);
+int zidx_export_ex(zidx_index *index,
+                   const zidx_stream *stream,
+                   zidx_export_filter_callback filter,
+                   void *filter_context);
 
 int zidx_import(zidx_index *index, FILE* input_index_file);
 int zidx_export(zidx_index *index, FILE* output_index_file);

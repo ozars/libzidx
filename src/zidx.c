@@ -502,26 +502,26 @@ zidx_index* zidx_index_create()
 int zidx_index_init(zidx_index* index,
                      zidx_stream* comp_stream)
 {
-    return zidx_index_init_advanced(index,
-                                    comp_stream,
-                                    ZX_STREAM_GZIP_OR_ZLIB,
-                                    ZX_CHECKSUM_DEFAULT,
-                                    NULL,
-                                    ZX_DEFAULT_INITIAL_LIST_CAPACITY,
-                                    ZX_DEFAULT_WINDOW_SIZE,
-                                    ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
-                                    ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
+    return zidx_index_init_ex(index,
+                              comp_stream,
+                              ZX_STREAM_GZIP_OR_ZLIB,
+                              ZX_CHECKSUM_DEFAULT,
+                              NULL,
+                              ZX_DEFAULT_INITIAL_LIST_CAPACITY,
+                              ZX_DEFAULT_WINDOW_SIZE,
+                              ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE,
+                              ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
 }
 
-int zidx_index_init_advanced(zidx_index* index,
-                             zidx_stream* comp_stream,
-                             zidx_stream_type stream_type,
-                             zidx_checksum_option checksum_option,
-                             z_stream* z_stream_ptr,
-                             int initial_capacity,
-                             int window_size,
-                             int comp_data_buffer_size,
-                             int seeking_data_buffer_size)
+int zidx_index_init_ex(zidx_index* index,
+                       zidx_stream* comp_stream,
+                       zidx_stream_type stream_type,
+                       zidx_checksum_option checksum_option,
+                       z_stream* z_stream_ptr,
+                       int initial_capacity,
+                       int window_size,
+                       int comp_data_buffer_size,
+                       int seeking_data_buffer_size)
 {
     /* Temporary variables that will be used to initialize corresponding members
      * of index. These are not modified directly on index, because we don't want
@@ -739,14 +739,14 @@ int zidx_index_destroy(zidx_index* index)
 int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes)
 {
     /* Pass to explicit version without block callbacks. */
-    return zidx_read_advanced(index, buffer, nbytes, NULL, NULL);
+    return zidx_read_ex(index, buffer, nbytes, NULL, NULL);
 }
 
-int zidx_read_advanced(zidx_index* index,
-                       uint8_t *buffer,
-                       int nbytes,
-                       zidx_block_callback block_callback,
-                       void *callback_context)
+int zidx_read_ex(zidx_index* index,
+                 uint8_t *buffer,
+                 int nbytes,
+                 zidx_block_callback block_callback,
+                 void *callback_context)
 {
     /* TODO: Implement support for concatanated gzip streams. */
 
@@ -892,14 +892,14 @@ int zidx_read_advanced(zidx_index* index,
 
 int zidx_seek(zidx_index* index, off_t offset, int whence)
 {
-    return zidx_seek_advanced(index, offset, whence, NULL, NULL);
+    return zidx_seek_ex(index, offset, whence, NULL, NULL);
 }
 
-int zidx_seek_advanced(zidx_index* index,
-                       off_t offset,
-                       int whence,
-                       zidx_block_callback block_callback,
-                       void *callback_context)
+int zidx_seek_ex(zidx_index* index,
+                 off_t offset,
+                 int whence,
+                 zidx_block_callback block_callback,
+                 void *callback_context)
 {
     /* TODO: If this function fails to reset z_stream, it will leave z_stream in
      * an invalid state. Must be handled. */
@@ -1044,11 +1044,11 @@ int zidx_seek_advanced(zidx_index* index,
 
         /* Read next compressed data and decompress it using internal seeking
          * buffer. */
-        s_read_len = zidx_read_advanced(index,
-                                        index->seeking_data_buffer,
-                                        num_bytes_next,
-                                        block_callback,
-                                        callback_context);
+        s_read_len = zidx_read_ex(index,
+                                  index->seeking_data_buffer,
+                                  num_bytes_next,
+                                  block_callback,
+                                  callback_context);
         /* Handle error. */
         if (s_read_len < 0) {
             ZX_LOG("ERROR: Couldn't decompress remaining data while "
@@ -1067,7 +1067,7 @@ int zidx_seek_advanced(zidx_index* index,
         num_bytes_remaining -= s_read_len;
 
         #ifdef ZX_DEBUG
-        /* Normally this should be unnecessary, since zidx_read_advanced can't
+        /* Normally this should be unnecessary, since this function should not
          * return more than buffer length, but anyway let's check it in
          * debugging mode. */
         if (num_bytes_remaining < 0) {
@@ -1086,9 +1086,9 @@ off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
 
 int zidx_build_index(zidx_index* index, off_t spacing_length);
-int zidx_build_index_advanced(zidx_index* index,
-                              zidx_block_callback next_block_callback,
-                              void *callback_context);
+int zidx_build_index_ex(zidx_index* index,
+                        zidx_block_callback next_block_callback,
+                        void *callback_context);
 
 zidx_checkpoint* zidx_create_checkpoint()
 {
@@ -1374,15 +1374,15 @@ int zidx_shrink_index_size(zidx_index* index, int nmembers)
 int zidx_fit_index_size(zidx_index* index);
 
 /* TODO: Implement these. */
-int zidx_import_advanced(zidx_index *index,
-                         const zidx_stream *stream,
-                         zidx_import_filter_callback filter,
-                         void *filter_context) { return 0; }
+int zidx_import_ex(zidx_index *index,
+                   const zidx_stream *stream,
+                   zidx_import_filter_callback filter,
+                   void *filter_context) { return 0; }
 
-int zidx_export_advanced(zidx_index *index,
-                         const zidx_stream *stream,
-                         zidx_export_filter_callback filter,
-                         void *filter_context) { return 0; }
+int zidx_export_ex(zidx_index *index,
+                   const zidx_stream *stream,
+                   zidx_export_filter_callback filter,
+                   void *filter_context) { return 0; }
 
 int zidx_import(zidx_index *index, FILE* input_index_file)
 {
@@ -1395,7 +1395,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
         zidx_raw_file_error,
         (void*) input_index_file
     };
-    return zidx_import_advanced(index, &input_stream, NULL, NULL);
+    return zidx_import_ex(index, &input_stream, NULL, NULL);
 }
 
 int zidx_export(zidx_index *index, FILE* output_index_file)
@@ -1409,7 +1409,7 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
         zidx_raw_file_error,
         (void*) output_index_file
     };
-    return zidx_export_advanced(index, &output_stream, NULL, NULL);
+    return zidx_export_ex(index, &output_stream, NULL, NULL);
 }
 
 

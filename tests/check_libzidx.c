@@ -192,11 +192,11 @@ START_TEST(test_comp_file_seek)
     file_completed = 0;
     while (!file_completed) {
         /* TODO: Replace this with zidx_build_index */
-        zx_ret = zidx_read_advanced(zx_index,
-                                    buffer,
-                                    sizeof(buffer),
-                                    comp_file_seek_callback,
-                                    &num_blocks);
+        zx_ret = zidx_read_ex(zx_index,
+                              buffer,
+                              sizeof(buffer),
+                              comp_file_seek_callback,
+                              &num_blocks);
         ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
 
         if (zx_ret == 0) {
