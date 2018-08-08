@@ -39,6 +39,7 @@ struct zidx_checkpoint_s
 {
     zidx_checkpoint_offset offset;
     uint32_t checksum;
+    uint16_t window_length;
     uint8_t *window_data;
 };
 
@@ -1013,7 +1014,7 @@ int zidx_seek_ex(zidx_index* index,
         /* Copy window from checkpoint. */
         z_ret = inflateSetDictionary(index->z_stream,
                                      checkpoint->window_data,
-                                     index->window_size);
+                                     checkpoint->window_length);
         if (z_ret != Z_OK) {
             ZX_LOG("ERROR: inflateSetDictionary error (%d).\n", z_ret);
             return ZX_ERR_ZLIB(z_ret);
@@ -1105,11 +1106,17 @@ int zidx_fill_checkpoint(zidx_index* index,
      * Alternatively, and preferably, remove index if you use dict_length for
      * window_size. */
 
+    /* Return value for function. */
+    int ret;
+
     /* Used for storing return value of zlib calls. */
     int z_ret;
 
     /* Length of dictionary, a.k.a. sliding window. */
     unsigned int dict_length;
+
+    /* Flag to decide whether window_data should be released upon failure. */
+    int window_data_allocated = 0;
 
     /* Sanity check. */
     if (index == NULL) {
@@ -1125,28 +1132,50 @@ int zidx_fill_checkpoint(zidx_index* index,
         return ZX_ERR_PARAMS;
     }
 
-    /* Allocate space for window_data if there isn't one. */
-    if (new_checkpoint->window_data == NULL) {
-        new_checkpoint->window_data = (uint8_t*)malloc(index->window_size);
-        if (new_checkpoint->window_data == NULL) {
-            ZX_LOG("ERROR: Couldn't allocate memory for window data.\n");
-            return ZX_ERR_MEMORY;
-        }
+    /* Read dict_length. This will be used to allocate necessary window space. */
+    z_ret = inflateGetDictionary(index->z_stream, NULL, &dict_length);
+    if (z_ret != Z_OK) {
+        ZX_LOG("ERROR: inflateGetDictionary returned error (%d).\n", z_ret);
+        ret = ZX_ERR_ZLIB(z_ret);
+        goto cleanup;
     }
 
-    /* Copy current offset to checkpoint offset. */
-    memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
-
-    /* TODO: Use dict_length to store variable length window_data maybe? */
-    dict_length = index->window_size;
+    /* Allocate space for window_data if there isn't one and dict_length is not
+     * zero. If user provides window_data, it's his responsibility to make sure
+     * its size is enough to hold window. Typically, 32768 is enough for all
+     * windows. */
+    if (new_checkpoint->window_data == NULL && dict_length > 0) {
+        new_checkpoint->window_data = (uint8_t*)malloc(dict_length);
+        if (new_checkpoint->window_data == NULL) {
+            ZX_LOG("ERROR: Couldn't allocate memory for window data.\n");
+            ret = ZX_ERR_MEMORY;
+            goto cleanup;
+        }
+        window_data_allocated = 1;
+    }
 
     z_ret = inflateGetDictionary(index->z_stream, new_checkpoint->window_data,
                                  &dict_length);
     if (z_ret != Z_OK) {
         ZX_LOG("ERROR: inflateGetDictionary returned error (%d).\n", z_ret);
-        return ZX_ERR_ZLIB(z_ret);
+        ret = ZX_ERR_ZLIB(z_ret);
+        goto cleanup;
     }
+
+    /* Copy current offset to checkpoint offset. */
+    memcpy(&new_checkpoint->offset, offset, sizeof(zidx_checkpoint_offset));
+
+    /* dict_length can't be more than 32768. */
+    new_checkpoint->window_length = dict_length;
+
     return ZX_RET_OK;
+
+cleanup:
+    if (window_data_allocated) {
+        free(new_checkpoint->window_data);
+        new_checkpoint->window_data = NULL;
+    }
+    return ret;
 }
 
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
