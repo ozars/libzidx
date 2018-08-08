@@ -783,8 +783,8 @@ int zidx_read_ex(zidx_index* index,
     /* Aliases. */
     z_stream *zs = index->z_stream;
 
-    ZX_LOG("Reading at (comp: %jd, uncomp: %jd)\n", (intmax_t)index->offset.comp,
-           (intmax_t)index->offset.uncomp);
+    ZX_LOG("Reading %d bytes at (comp: %jd, uncomp: %jd)\n", nbytes,
+           (intmax_t)index->offset.comp, (intmax_t)index->offset.uncomp);
 
     switch (index->stream_state) {
         case ZX_STATE_FILE_HEADERS:
@@ -888,6 +888,8 @@ int zidx_read_ex(zidx_index* index,
             return ZX_ERR_CORRUPTED;
 
     } /* end of switch(index->stream_state) */
+
+    ZX_LOG("Read %jd bytes.\n", (intmax_t)(zs->next_out - buffer));
 
     /* Return number of bytes read into the buffer. */
     return zs->next_out - buffer;
