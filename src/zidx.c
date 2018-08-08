@@ -1297,7 +1297,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     }
 
     /* Binary search for a lowerbound index. */
-    while (left < right) {
+    while (left <= right) {
         idx = (left + right) / 2;
 
         /* If current offset is greater, we need to move the range to left by
@@ -1322,7 +1322,7 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     ZX_LOG("ERROR: If you see this, there's something terribly wrong in this "
            "function. The binary search failed, but it shouldn't have done so, "
            "since we compared offset to the that of first checkpoint. Go check "
-           "the code.\n");
+           "the code. (left: %d, right: %d)\n", left, right);
     return ZX_ERR_NOT_FOUND;
 
     #undef ZX_OFFSET_
