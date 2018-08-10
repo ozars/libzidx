@@ -1090,10 +1090,102 @@ int zidx_seek_ex(zidx_index* index,
 off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
 
-int zidx_build_index(zidx_index* index, off_t spacing_length);
+typedef struct spacing_data_s
+{
+    off_t last_offset;
+    off_t spacing_length;
+} spacing_data;
+
+static int spacing_callback(void *context,
+                            zidx_index *index,
+                            zidx_checkpoint_offset *offset,
+                            int is_last_block)
+{
+    /* Used for storing return value of this function. */
+    int ret;
+
+    /* Used for storing return value of zidx calls. */
+    int zx_ret;
+
+    /* New checkpoint that will be added. Should be freed in case of failure. */
+    zidx_checkpoint *ckp = NULL;
+
+    /* Casted alias for context. */
+    spacing_data* data = context;
+
+    /* If spacing_length bytes passed since last saved checkpoint... */
+    if (offset->uncomp >= data->last_offset + data->spacing_length) {
+
+        /* Create a new checkpoint. */
+        ckp = zidx_create_checkpoint();
+        if (ckp == NULL) {
+            ZX_LOG("ERROR: Couldn't allocate memory for new checkpoint (%d).\n",
+                   zx_ret);
+            ret = zx_ret;
+            goto cleanup;
+        }
+
+        /* Fill it in with current index and offset information. */
+        zx_ret = zidx_fill_checkpoint(index, ckp, offset);
+        if (zx_ret != ZX_RET_OK) {
+            ZX_LOG("ERROR: Couldn't fill new checkpoint (%d).\n", zx_ret);
+            ret = zx_ret;
+            goto cleanup;
+        }
+
+        /* Add checkpoint to the index list. */
+        zx_ret = zidx_add_checkpoint(index, ckp);
+        if (zx_ret != ZX_RET_OK) {
+            ZX_LOG("ERROR: Couldn't add new checkpoint (%d).\n", zx_ret);
+            ret = zx_ret;
+            goto cleanup;
+        }
+    }
+
+    return ZX_RET_OK;
+
+cleanup:
+    if (ckp != NULL) {
+        free(ckp);
+    }
+    return ret;
+}
+
+
+int zidx_build_index(zidx_index* index, off_t spacing_length)
+{
+    /* Context for spacing_callback. */
+    spacing_data data;
+
+    /* Assign last uncompressed offset to 0, and pass spacing_length. */
+    data.last_offset = 0;
+    data.spacing_length = spacing_length;
+
+    return zidx_build_index_ex(index, spacing_callback, &data);
+}
+
 int zidx_build_index_ex(zidx_index* index,
                         zidx_block_callback next_block_callback,
-                        void *callback_context);
+                        void *callback_context)
+{
+    /* Used for storing return value of zidx calls. */
+    int zx_ret;
+
+    /* Read as long as it's not end of stream. */
+    do {
+        zx_ret = zidx_read_ex(index,
+                              index->seeking_data_buffer,
+                              index->seeking_data_buffer_size,
+                              next_block_callback,
+                              callback_context);
+        if (zx_ret < 0) {
+            ZX_LOG("ERROR: While reading decompressed data (%d).\n", zx_ret);
+            return zx_ret;
+        }
+    } while(zx_ret > 0);
+
+    return ZX_RET_OK;
+}
 
 zidx_checkpoint* zidx_create_checkpoint()
 {
