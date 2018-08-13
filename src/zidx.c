@@ -1496,7 +1496,15 @@ int zidx_shrink_index_size(zidx_index* index, int nmembers)
     return ZX_RET_OK;
 }
 
-int zidx_fit_index_size(zidx_index* index);
+int zidx_fit_index_size(zidx_index* index)
+{
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    return zidx_shrink_index_size(index,
+                                  index->list_capacity - index->list_count);
+}
 
 /* TODO: Implement these. */
 int zidx_import_ex(zidx_index *index,
