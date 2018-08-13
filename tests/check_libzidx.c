@@ -189,20 +189,8 @@ START_TEST(test_comp_file_seek)
     long step = 1024;
     int num_blocks = 0;
 
-    file_completed = 0;
-    while (!file_completed) {
-        /* TODO: Replace this with zidx_build_index */
-        zx_ret = zidx_read_ex(zx_index,
-                              buffer,
-                              sizeof(buffer),
-                              comp_file_seek_callback,
-                              &num_blocks);
-        ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
-
-        if (zx_ret == 0) {
-            file_completed = 1;
-        }
-    }
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
 
     offset = zx_index->offset.uncomp - step;
     while (offset > 0) {
