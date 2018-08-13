@@ -16,9 +16,7 @@ gmon.out
 prof_output
 
 # VIM files
-*.swp
-*.swa
-*.swo
+*.sw?
 
 # ctags output
 tags
