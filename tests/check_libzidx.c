@@ -15,7 +15,7 @@
 #endif
 
 #ifndef ZX_TEST_LONG_TIMEOUT
-#define ZX_TEST_LONG_TIMEOUT (30)
+#define ZX_TEST_LONG_TIMEOUT (60)
 #endif
 
 const char *comp_file_path;
