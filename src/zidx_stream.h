@@ -142,7 +142,9 @@ inline int zidx_stream_read(zidx_stream *stream, uint8_t *buffer, int nbytes)
     return stream->read(stream->context, buffer, nbytes);
 }
 
-inline int zidx_stream_write(zidx_stream *stream, uint8_t *buffer, int nbytes)
+inline int zidx_stream_write(zidx_stream *stream,
+                             const uint8_t *buffer,
+                             int nbytes)
 {
     return stream->write(stream->context, buffer, nbytes);
 }
