@@ -18,6 +18,9 @@ extern "C" {
 #define ZX_LOG(...) while(0)
 #endif
 
+uint8_t zx_magic_prefix[] = {'Z', 'I', 'D', 'X'};
+uint8_t zx_version_prefix[] = {0, 0};
+
 typedef enum zidx_stream_state
 {
     ZX_STATE_INVALID,
@@ -1510,41 +1513,199 @@ int zidx_fit_index_size(zidx_index* index)
 int zidx_import_ex(zidx_index *index,
                    const zidx_stream *stream,
                    zidx_import_filter_callback filter,
-                   void *filter_context) { return 0; }
+                   void *filter_context);
 
 int zidx_export_ex(zidx_index *index,
                    const zidx_stream *stream,
                    zidx_export_filter_callback filter,
-                   void *filter_context) { return 0; }
+                   void *filter_context);
 
 int zidx_import(zidx_index *index, FILE* input_index_file)
 {
-    const zidx_stream input_stream = {
-        zidx_raw_file_read,
-        zidx_raw_file_write,
-        zidx_raw_file_seek,
-        zidx_raw_file_tell,
-        zidx_raw_file_eof,
-        zidx_raw_file_error,
-        (void*) input_index_file
-    };
-    return zidx_import_ex(index, &input_stream, NULL, NULL);
+    zidx_stream* input_stream;
+
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (input_index_file == NULL) {
+        ZX_LOG("ERROR: Input index file is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+
+    input_stream = zidx_stream_from_file(input_index_file);
+    if (input_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    /* TODO: Not yet implemented. */
+    return ZX_ERR_INVALID_OP;
 }
 
 int zidx_export(zidx_index *index, FILE* output_index_file)
 {
-    const zidx_stream output_stream = {
-        zidx_raw_file_read,
-        zidx_raw_file_write,
-        zidx_raw_file_seek,
-        zidx_raw_file_tell,
-        zidx_raw_file_eof,
-        zidx_raw_file_error,
-        (void*) output_index_file
-    };
-    return zidx_export_ex(index, &output_stream, NULL, NULL);
-}
+    /* Local definition to tidy up cumbersome error check procedures. */
+    #define ZX_WRITE_TEMPLATE_(buf, buflen, name) \
+        do { \
+            s_ret = zidx_stream_write(output_stream, (uint8_t*)buf, buflen); \
+            if (s_ret < buflen) { \
+                s_err = zidx_stream_error(output_stream); \
+                ZX_LOG("ERROR: Couldn't write " name " (%d).\n", s_err); \
+                return s_err; \
+            } \
+        } while(0)
 
+    /* Output stream to write index data. */
+    zidx_stream* output_stream;
+
+    /* Used for storing return values of stream calls. */
+    int s_ret;
+    int s_err;
+
+    /* Used for writing 0 as default for some values. */
+    const uint64_t zero = 0;
+
+    /* Type of indexed file. TODO: Currently, it's gzip. Implement others. */
+    int16_t type_of_file = 0x1;
+
+    /* Used for expanding types to fixed bit values. */
+    int64_t i64;
+    int64_t i32;
+
+    /* Window data offset. Keeps track of where to write next window data. */
+    int64_t window_off;
+
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (index->list == NULL) {
+        /* TODO: This sanity check will cause error if user tries to export an
+         * index with 0 list_capacity since list will be NULL in that case. */
+        ZX_LOG("ERROR: index list is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+    if (output_index_file == NULL) {
+        ZX_LOG("ERROR: Output index file is NULL.\n");
+        return ZX_ERR_PARAMS;
+    }
+
+    /* Create output stream. */
+    output_stream = zidx_stream_from_file(output_index_file);
+    if (output_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    /*
+     * Header section.
+     */
+
+    /* Write magic string. */
+    ZX_WRITE_TEMPLATE_(zx_magic_prefix, sizeof(zx_magic_prefix), "magic prefix");
+
+    /* Write version info. */
+    ZX_WRITE_TEMPLATE_(zx_version_prefix,
+                       sizeof(zx_version_prefix),
+                       "version prefix");
+
+    /* Write type of checksum. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 2, "the type of checksum");
+
+    /* Write checksum of the rest of header. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the header");
+
+    /* Write the type of indexed file. */
+    ZX_WRITE_TEMPLATE_(&type_of_file, sizeof(type_of_file), "the type of file");
+
+    /* Write the length of compressed file. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 8, "the compressed length");
+
+    /* Write the length of uncompressed file. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 8, "the uncompressed length");
+
+    /* Checksum of indexed file. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");
+
+    /* Number of indexed checkpoints. */
+    i32 = index->list_count;
+    ZX_WRITE_TEMPLATE_(&i32, sizeof(i32), "number of checkpoints");
+
+    /* Checksum of whole checkpoint metadata. TODO: Not implemented yet. */
+    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of metadata");
+
+    /* Flags. TODO: Not implemented yet. Also it's non-conformant: Current
+     * implementation assumes as if ZX_UNKNOWN_CHECKSUM and
+     * ZX_UNKNOWN_WINDOW_CHECKSUM flags are set. */
+    ZX_WRITE_TEMPLATE_(&zero, 4, "flags");
+
+    /* TODO: Implement optional extra data. */
+
+    /*
+     * Checkpoint section.
+     */
+
+    /* Compute beginning offset of window data. TODO: Extra space is assumed to
+     * be zero. */
+    window_off = zidx_stream_tell(output_stream);
+    if (window_off < 0) {
+        ZX_LOG("ERROR: Couldn't tell stream offset (%ld).\n", window_off);
+        return ZX_ERR_STREAM_SEEK;
+    }
+    /* Skip checkpoint headers section. */
+    window_off += 24 * index->list_count;
+
+    /* List iterator and end point. */
+    zidx_checkpoint *it;
+    zidx_checkpoint *end = index->list + index->list_count;
+
+    /* Iterate over checkpoints for writing checkpoint metadata. */
+    for(it = index->list; it < end; it++)
+    {
+        /* Write uncompressed offset. */
+        i64 = it->offset.uncomp;
+        ZX_WRITE_TEMPLATE_(&i64, sizeof(i64), "uncompressed offset");
+
+        /* Write compressed offset. */
+        i64 = it->offset.comp;
+        ZX_WRITE_TEMPLATE_(&i64, sizeof(i64), "compressed offset");
+
+        /* Write block boundary bits offset and boundary byte. */
+        ZX_WRITE_TEMPLATE_(&it->offset.comp_bits_count, 1, "boundary bit offset");
+        if (it->offset.comp_bits_count == 0) {
+            ZX_WRITE_TEMPLATE_(&zero, 1, "boundary byte");
+        } else {
+            ZX_WRITE_TEMPLATE_(&it->offset.comp_byte, 1, "boundary byte");
+        }
+
+        /* Write offset of window data. */
+        ZX_WRITE_TEMPLATE_(&window_off, sizeof(window_off), "window offset");
+
+        /* Write length of window data. TODO: Non-conformant. Has a length of 2
+         * bytes instead of 4 bytes. Need to update file specification. */
+        ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),
+                           "window length");
+
+        /* Update window offset for next checkpoint. */
+        window_off += it->window_length;
+    }
+
+    /* Iterate over checkpoints for writing checkpoint window data. */
+    for(it = index->list; it < end; it++)
+    {
+        if (it->window_length > 0) {
+            /* Write window data. */
+            ZX_WRITE_TEMPLATE_(&it->window_data, it->window_length,
+                               "window data");
+        }
+    }
+
+    return ZX_RET_OK;
+
+    #undef ZX_WRITE_TEMPLATE_
+}
 
 #ifdef __cplusplus
 } // extern "C"
