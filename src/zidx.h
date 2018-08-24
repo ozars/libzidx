@@ -36,6 +36,8 @@ typedef struct z_stream_s z_stream;
 #define ZX_ERR_STREAM_SEEK (-7)
 #define ZX_ERR_INVALID_OP (-8)
 #define ZX_ERR_NOT_FOUND (-9)
+#define ZX_ERR_NOT_IMPLEMENTED (-10)
+#define ZX_ERR_OVERFLOW (-11)
 
 #define ZX_ERR_ZLIB(err) (-64 + err)
 #define ZX_ERR_CALLBACK(err) (-16384 + err)
