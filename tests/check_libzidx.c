@@ -18,7 +18,7 @@
 #define ZX_TEST_LONG_TIMEOUT (60)
 #endif
 
-const char *comp_file_path;
+FILE *comp_file;
 zidx_stream *comp_stream;
 zidx_index *zx_index;
 uint8_t *uncomp_data;
@@ -28,20 +28,17 @@ void unchecked_setup()
     uncomp_data = malloc(ZX_TEST_COMP_FILE_LENGTH);
     ck_assert_msg(uncomp_data, "Couldn't allocate space for temporary data.");
 
-    comp_file_path = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
-                                                ZX_TEST_COMP_FILE_LENGTH,
-                                                uncomp_data);
+    comp_file = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
+                                           ZX_TEST_COMP_FILE_LENGTH,
+                                           uncomp_data);
 
-    ck_assert_msg(comp_file_path, "Couldn't create temporary compressed file.");
+    ck_assert_msg(comp_file, "Couldn't create temporary compressed file.");
+
 }
 
 void unchecked_teardown()
 {
     int comp_file_deleted;
-    comp_file_deleted = remove(comp_file_path);
-
-    ck_assert_msg(comp_file_deleted == 0, "Couldn't remove temporary compressed "
-                                          "file.");
 
     free(uncomp_data);
     uncomp_data = NULL;
@@ -52,17 +49,16 @@ void unchecked_teardown()
 void setup_stream_api()
 {
     int zx_ret;
-    FILE *f;
     const char *msg;
-
-    f = fopen(comp_file_path, "rb");
-    ck_assert_msg(f, "Couldn't open compressed file.");
 
     comp_stream = malloc(sizeof(zidx_stream));
     ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
                                "stream.");
 
-    comp_stream = zidx_stream_from_file(f);
+    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
+                  "Couldn't rewind temporary compressed file.");
+
+    comp_stream = zidx_stream_from_file(comp_file);
     ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 }
 
