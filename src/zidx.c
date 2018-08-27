@@ -1605,15 +1605,15 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
 
     /* Read magic string and check. */
     ZX_READ_TEMPLATE_(buf, sizeof(zx_magic_prefix), "magic prefix");
-    if (!memcmp(zx_magic_prefix, buf, sizeof(zx_magic_prefix))) {
-        ZX_LOG("ERROR: Incorrect magic prefix.");
+    if (memcmp(zx_magic_prefix, buf, sizeof(zx_magic_prefix))) {
+        ZX_LOG("ERROR: Incorrect magic prefix.\n");
         return ZX_ERR_CORRUPTED;
     }
 
     /* Read version string and check. */
     ZX_READ_TEMPLATE_(buf, sizeof(zx_version_prefix), "version prefix");
-    if (!memcmp(zx_version_prefix, buf, sizeof(zx_version_prefix))) {
-        ZX_LOG("ERROR: Incorrect version prefix.");
+    if (memcmp(zx_version_prefix, buf, sizeof(zx_version_prefix))) {
+        ZX_LOG("ERROR: Incorrect version prefix.\n");
         return ZX_ERR_CORRUPTED;
     }
 
