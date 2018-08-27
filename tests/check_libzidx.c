@@ -207,6 +207,64 @@ START_TEST(test_comp_file_seek)
 }
 END_TEST
 
+START_TEST(test_export_import)
+{
+    int zx_ret;
+    int r_len;
+    uint8_t buffer[1024];
+    int file_completed;
+    int i;
+    long offset;
+    long step = 1024;
+    int num_blocks = 0;
+
+    FILE *index_file = NULL;
+    zidx_index *new_index;
+    zidx_stream *new_stream;
+
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
+                  zx_ret);
+
+    index_file = fopen("index_file.tmp", "wb+"); /* TODO: Use tmpfile instead. */
+    ck_assert_msg(index_file, "Couldn't open index file.");
+
+    zx_ret = zidx_export(zx_index, index_file);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't export index (%d).", zx_ret);
+
+    new_index = zidx_index_create();
+    ck_assert_msg(new_index, "Couldn't create new index.");
+
+    new_stream = zidx_stream_from_file(comp_file);
+    ck_assert_msg(new_stream, "Couldn't create new stream.");
+
+    zx_ret = zidx_index_init(new_index, new_stream);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't initialize index (%d).", zx_ret);
+
+    ck_assert_msg(fseek(index_file, 0, SEEK_SET) == 0, "Couldn't rewind file.", zx_ret);
+
+    zx_ret = zidx_import(new_index, index_file);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).", zx_ret);
+
+    offset = zx_index->offset.uncomp - step;
+    while (offset > 0) {
+        zx_ret = zidx_seek(new_index, offset, ZX_SEEK_SET);
+        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
+
+        r_len = zidx_read(new_index, buffer, sizeof(buffer));
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
+                              buffer[i]);
+
+        offset -= step;
+    }
+}
+END_TEST
+
 Suite* libzidx_test_suite()
 {
     Suite *s;
@@ -238,6 +296,7 @@ Suite* libzidx_test_suite()
 
     tcase_add_test(tc_core, test_comp_file_read);
     tcase_add_test(tc_core, test_comp_file_seek);
+    tcase_add_test(tc_core, test_export_import);
 
     suite_add_tcase(s, tc_core);
 
