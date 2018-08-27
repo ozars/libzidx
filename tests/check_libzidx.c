@@ -221,6 +221,8 @@ START_TEST(test_export_import)
     FILE *index_file = NULL;
     zidx_index *new_index;
     zidx_stream *new_stream;
+    zidx_checkpoint *new_ckp;
+    zidx_checkpoint *old_ckp;
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
@@ -245,6 +247,42 @@ START_TEST(test_export_import)
 
     zx_ret = zidx_import(new_index, index_file);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).", zx_ret);
+
+    ck_assert_msg(new_index->list_count == zx_index->list_count,
+                  "Couldn't match the number of elements on new (%d) and old (%d) list.",
+                  new_index->list_count, zx_index->list_count);
+
+    for (i = 0; i < new_index->list_count; i++)
+    {
+        new_ckp = &new_index->list[i];
+        old_ckp = &zx_index->list[i];
+        ck_assert_msg(new_ckp->window_length == old_ckp->window_length,
+                      "Couldn't match window lengths at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp == old_ckp->offset.comp,
+                      "Couldn't match compressed offsets at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.uncomp == old_ckp->offset.uncomp,
+                      "Couldn't match uncompressed offsets at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp_bits_count
+                            == old_ckp->offset.comp_bits_count,
+                      "Couldn't match boundary bits count at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp_byte == old_ckp->offset.comp_byte,
+                      "Couldn't match boundary byte at checkpoint %d.", i);
+
+        if (new_ckp->window_length > 0) {
+            ck_assert_msg(!memcmp(new_ckp->window_data, old_ckp->window_data,
+                                  new_ckp->window_length),
+                          "Couldn't match window data at checkpoint %d.", i);
+        } else {
+            ck_assert_msg(new_ckp->window_data == NULL,
+                          "New checkpoint %d window should be NULL.", i);
+            ck_assert_msg(old_ckp->window_data == NULL,
+                          "Old checkpoint %d window should be NULL.", i);
+        }
+    }
 
     offset = zx_index->offset.uncomp - step;
     while (offset > 0) {

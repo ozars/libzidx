@@ -1520,6 +1520,38 @@ int zidx_export_ex(zidx_index *index,
                    zidx_export_filter_callback filter,
                    void *filter_context);
 
+static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
+{
+    int needed_size;
+    int zx_ret;
+    zidx_checkpoint *it;
+    const zidx_checkpoint *end;
+
+    /* Extend index if needed. */
+    needed_size = temp_index->list_count - index->list_capacity;
+    if (needed_size > 0) {
+        zx_ret = zidx_extend_index_size(index, needed_size);
+        if (zx_ret != ZX_RET_OK) {
+            ZX_LOG("ERROR: Couldn't extend index size %d more elements.\n",
+                   needed_size);
+            return zx_ret;
+        }
+    }
+
+    /* Free existing index list members. */
+    end = index->list + index->list_count;
+    for (it = index->list; it < end; it++) {
+        free(it->window_data);
+    }
+    free(index->list);
+
+    /* Copy current index. */
+    index->list       = temp_index->list;
+    index->list_count = temp_index->list_count;
+
+    return ZX_RET_OK;
+}
+
 int zidx_import(zidx_index *index, FILE* input_index_file)
 {
     /* Local definition to tidy up cumbersome error check procedures. */
@@ -1560,6 +1592,9 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
     /* Return value for this function. Used for clean error handling to avoid
      * memory leaks. */
     int ret;
+
+    /* Used for zidx library calls. */
+    int zx_ret;
 
     /* Fixed length types. Used for reading fixed-length data to int. */
     int64_t i64;
@@ -1726,7 +1761,18 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
             }
             /* Write window data. */
             ZX_READ_TEMPLATE_(it->window_data, it->window_length, "window data");
+        } else {
+            /* This might be unnecessary, given we used calloc above while
+             * populating list, but let's keep it. */
+            it->window_data = NULL;
         }
+    }
+
+    /* Now that we are good, copy temporary index to main index. */
+    zx_ret = commit_temp_index_(index, temp_index);
+    if (zx_ret != ZX_RET_OK) {
+        ZX_LOG("ERROR: Couldn't commit temporary index (%d).\n", zx_ret);
+        return zx_ret;
     }
 
     return ZX_RET_OK;
