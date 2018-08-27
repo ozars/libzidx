@@ -10,6 +10,7 @@
 !/tests/check_*.*
 *.log
 *.trs
+*.tmp
 
 # Profiling Artifacts
 gmon.out
