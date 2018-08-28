@@ -1575,6 +1575,17 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
                     goto fail; \
                 } \
             } \
+            if (sizeof(*buf) == buflen) { \
+                ZX_LOG("Imported " name " (%jd) \n", (intmax_t)(*buf)); \
+            } else if(buflen >= 3) { \
+                ZX_LOG("Imported " name " (hex %02X %02X %02X%s)\n", \
+                       ((uint8_t*)buf)[0], ((uint8_t*)buf)[1], ((uint8_t*)buf)[2], \
+                       (buflen > 3 ? "..." : "")); \
+            } else if(buflen == 2) { \
+                ZX_LOG("Imported " name " (hex %02X %02X)\n", ((uint8_t*)buf)[0], ((uint8_t*)buf)[1]); \
+            } else { \
+                ZX_LOG("Imported " name " (hex %02X)\n", ((uint8_t*)buf)[0]); \
+            } \
         } while(0)
 
     /* Input stream to read index data. */
@@ -1696,6 +1707,9 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
      * Checkpoint section.
      */
 
+    ZX_LOG("Completed reading header of imported file at offset %jd.\n",
+           (intmax_t)zidx_stream_tell(input_stream));
+
     /* Allocate space for list. */
     temp_index->list = calloc(temp_index->list_count, sizeof(zidx_checkpoint));
     if (temp_index->list == NULL) {
@@ -1765,6 +1779,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
             /* This might be unnecessary, given we used calloc above while
              * populating list, but let's keep it. */
             it->window_data = NULL;
+            ZX_LOG("No window data.\n");
         }
     }
 
@@ -1803,6 +1818,17 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
                 ZX_LOG("ERROR: Couldn't write " name " (%d).\n", s_err); \
                 return s_err; \
             } \
+            if (sizeof(*buf) == buflen) { \
+                ZX_LOG("Exported " name " (%jd) \n", (intmax_t)(*buf)); \
+            } else if(buflen >= 3) { \
+                ZX_LOG("Exported " name " (hex %02X %02X %02X%s)\n", \
+                       ((uint8_t*)buf)[0], ((uint8_t*)buf)[1], ((uint8_t*)buf)[2], \
+                       (buflen > 3 ? "..." : "")); \
+            } else if(buflen == 2) { \
+                ZX_LOG("Exported " name " (hex %02X %02X)\n", ((uint8_t*)buf)[0], ((uint8_t*)buf)[1]); \
+            } else { \
+                ZX_LOG("Exported " name " (hex %02X)\n", ((uint8_t*)buf)[0]); \
+            } \
         } while(0)
 
     /* Output stream to write index data. */
@@ -1820,7 +1846,7 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
 
     /* Used for expanding types to fixed bit values. */
     int64_t i64;
-    int64_t i32;
+    int32_t i32;
 
     /* Window data offset. Keeps track of where to write next window data. */
     int64_t window_off;
@@ -1896,6 +1922,9 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
      * Checkpoint section.
      */
 
+    ZX_LOG("Completed writing header of imported file at offset %jd.\n",
+           (intmax_t)zidx_stream_tell(output_stream));
+
     /* Compute beginning offset of window data. TODO: Extra space is assumed to
      * be zero. */
     window_off = zidx_stream_tell(output_stream);
@@ -1946,7 +1975,7 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     {
         if (it->window_length > 0) {
             /* Write window data. */
-            ZX_WRITE_TEMPLATE_(&it->window_data, it->window_length,
+            ZX_WRITE_TEMPLATE_(it->window_data, it->window_length,
                                "window data");
         }
     }
