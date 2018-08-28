@@ -976,8 +976,8 @@ int zidx_seek_ex(zidx_index* index,
         /* Dispose if there's anything in input buffer. */
         index->z_stream->avail_in = 0;
     } else if (
-            index->offset.comp < checkpoint->offset.comp
-            || index->offset.comp > offset) {
+            index->offset.uncomp < checkpoint->offset.uncomp
+            || index->offset.uncomp > offset) {
         /* If offset is between checkpoint and current index offset, jump to the
          * checkpoint. */
         ZX_LOG("Jumping to checkpoint (idx: %d, comp: %ld, uncomp: %ld).\n",
@@ -1037,6 +1037,11 @@ int zidx_seek_ex(zidx_index* index,
 
         /* Dispose if there's anything in input buffer. */
         index->z_stream->avail_in = 0;
+    } else {
+        ZX_LOG("No need to jump to checkpoint, since offset (%jd) is closer to "
+               "the current offset (%jd) than that of checkpoint (%jd).\n",
+               (intmax_t)offset, (intmax_t)index->offset.uncomp,
+               (intmax_t)checkpoint->offset.uncomp);
     }
 
     /* Whether we jump to somewhere in file or not, we need to consume remaining
@@ -1380,6 +1385,8 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     /* Check the last element first. We check it in here so that we don't
      * account for it in every iteartion of the loop below. */
     if(ZX_OFFSET_(right) < offset) {
+        ZX_LOG("Offset (%jd) found at last checkpoint (%d) start at uncompressed"
+               " offset (%jd).\n", (intmax_t)offset, right, ZX_OFFSET_(right));
         return right;
     }
 
@@ -1408,6 +1415,8 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
         /* If current offset is less than or equal, and the following one is
          * greater, we found the lower bound, return it. */
         } else {
+            ZX_LOG("Offset (%jd) found at checkpoint (%d) start at uncompressed "
+                   "offset (%jd).\n", (intmax_t)offset, idx, ZX_OFFSET_(idx));
             return idx;
         }
     }
