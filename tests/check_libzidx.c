@@ -182,13 +182,16 @@ START_TEST(test_comp_file_seek)
     int file_completed;
     int i;
     long offset;
-    long step = 1024;
+    long step = 1023;
     int num_blocks = 0;
+    long last_offset;
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
 
-    offset = zx_index->offset.uncomp - step;
+    last_offset = zx_index->offset.uncomp;
+
+    offset = last_offset - step;
     while (offset > 0) {
         zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
         ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
@@ -204,6 +207,24 @@ START_TEST(test_comp_file_seek)
 
         offset -= step;
     }
+
+    do {
+        offset = zidx_tell(zx_index) + step;
+
+        zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
+        ck_assert_msg(zx_ret == 0 ||
+                      (offset >= last_offset && zx_ret == ZX_ERR_STREAM_EOF),
+                      "Seek returned %d at offset %ld", zx_ret, offset);
+
+        r_len = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
+                              buffer[i]);
+    } while(r_len != 0);
 }
 END_TEST
 
