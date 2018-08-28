@@ -15,10 +15,10 @@
 #endif
 
 #ifndef ZX_TEST_LONG_TIMEOUT
-#define ZX_TEST_LONG_TIMEOUT (30)
+#define ZX_TEST_LONG_TIMEOUT (60)
 #endif
 
-const char *comp_file_path;
+FILE *comp_file;
 zidx_stream *comp_stream;
 zidx_index *zx_index;
 uint8_t *uncomp_data;
@@ -28,20 +28,17 @@ void unchecked_setup()
     uncomp_data = malloc(ZX_TEST_COMP_FILE_LENGTH);
     ck_assert_msg(uncomp_data, "Couldn't allocate space for temporary data.");
 
-    comp_file_path = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
-                                                ZX_TEST_COMP_FILE_LENGTH,
-                                                uncomp_data);
+    comp_file = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
+                                           ZX_TEST_COMP_FILE_LENGTH,
+                                           uncomp_data);
 
-    ck_assert_msg(comp_file_path, "Couldn't create temporary compressed file.");
+    ck_assert_msg(comp_file, "Couldn't create temporary compressed file.");
+
 }
 
 void unchecked_teardown()
 {
     int comp_file_deleted;
-    comp_file_deleted = remove(comp_file_path);
-
-    ck_assert_msg(comp_file_deleted == 0, "Couldn't remove temporary compressed "
-                                          "file.");
 
     free(uncomp_data);
     uncomp_data = NULL;
@@ -52,17 +49,16 @@ void unchecked_teardown()
 void setup_stream_api()
 {
     int zx_ret;
-    FILE *f;
     const char *msg;
-
-    f = fopen(comp_file_path, "rb");
-    ck_assert_msg(f, "Couldn't open compressed file.");
 
     comp_stream = malloc(sizeof(zidx_stream));
     ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
                                "stream.");
 
-    comp_stream = zidx_stream_from_file(f);
+    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
+                  "Couldn't rewind temporary compressed file.");
+
+    comp_stream = zidx_stream_from_file(comp_file);
     ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 }
 
@@ -186,30 +182,135 @@ START_TEST(test_comp_file_seek)
     int file_completed;
     int i;
     long offset;
-    long step = 1024;
+    long step = 1023;
     int num_blocks = 0;
+    long last_offset;
 
-    file_completed = 0;
-    while (!file_completed) {
-        /* TODO: Replace this with zidx_build_index */
-        zx_ret = zidx_read_advanced(zx_index,
-                                    buffer,
-                                    sizeof(buffer),
-                                    comp_file_seek_callback,
-                                    &num_blocks);
-        ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
 
-        if (zx_ret == 0) {
-            file_completed = 1;
-        }
-    }
+    last_offset = zx_index->offset.uncomp;
 
-    offset = zx_index->offset.uncomp - step;
+    offset = last_offset - step;
     while (offset > 0) {
         zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
         ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
 
         r_len = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
+                              buffer[i]);
+
+        offset -= step;
+    }
+
+    do {
+        offset = zidx_tell(zx_index) + step;
+
+        zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
+        ck_assert_msg(zx_ret == 0 ||
+                      (offset >= last_offset && zx_ret == ZX_ERR_STREAM_EOF),
+                      "Seek returned %d at offset %ld", zx_ret, offset);
+
+        r_len = zidx_read(zx_index, buffer, sizeof(buffer));
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+
+        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
+                              "Incorrect data at offset %ld, "
+                              "expected %u (0x%02X), got %u (0x%02X).",
+                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
+                              buffer[i]);
+    } while(r_len != 0);
+}
+END_TEST
+
+START_TEST(test_export_import)
+{
+    int zx_ret;
+    int r_len;
+    uint8_t buffer[1024];
+    int file_completed;
+    int i;
+    long offset;
+    long step = 1024;
+    int num_blocks = 0;
+
+    FILE *index_file = NULL;
+    zidx_index *new_index;
+    zidx_stream *new_stream;
+    zidx_checkpoint *new_ckp;
+    zidx_checkpoint *old_ckp;
+
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
+                  zx_ret);
+
+    index_file = fopen("index_file.tmp", "wb+"); /* TODO: Use tmpfile instead. */
+    ck_assert_msg(index_file, "Couldn't open index file.");
+
+    zx_ret = zidx_export(zx_index, index_file);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't export index (%d).", zx_ret);
+
+    new_index = zidx_index_create();
+    ck_assert_msg(new_index, "Couldn't create new index.");
+
+    new_stream = zidx_stream_from_file(comp_file);
+    ck_assert_msg(new_stream, "Couldn't create new stream.");
+
+    zx_ret = zidx_index_init(new_index, new_stream);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't initialize index (%d).", zx_ret);
+
+    ck_assert_msg(fseek(index_file, 0, SEEK_SET) == 0, "Couldn't rewind file.", zx_ret);
+
+    zx_ret = zidx_import(new_index, index_file);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).", zx_ret);
+
+    ck_assert_msg(new_index->list_count == zx_index->list_count,
+                  "Couldn't match the number of elements on new (%d) and old (%d) list.",
+                  new_index->list_count, zx_index->list_count);
+
+    for (i = 0; i < new_index->list_count; i++)
+    {
+        new_ckp = &new_index->list[i];
+        old_ckp = &zx_index->list[i];
+        ck_assert_msg(new_ckp->window_length == old_ckp->window_length,
+                      "Couldn't match window lengths at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp == old_ckp->offset.comp,
+                      "Couldn't match compressed offsets at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.uncomp == old_ckp->offset.uncomp,
+                      "Couldn't match uncompressed offsets at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp_bits_count
+                            == old_ckp->offset.comp_bits_count,
+                      "Couldn't match boundary bits count at checkpoint %d.", i);
+
+        ck_assert_msg(new_ckp->offset.comp_byte == old_ckp->offset.comp_byte,
+                      "Couldn't match boundary byte at checkpoint %d.", i);
+
+        if (new_ckp->window_length > 0) {
+            ck_assert_msg(!memcmp(new_ckp->window_data, old_ckp->window_data,
+                                  new_ckp->window_length),
+                          "Couldn't match window data at checkpoint %d.", i);
+        } else {
+            ck_assert_msg(new_ckp->window_data == NULL,
+                          "New checkpoint %d window should be NULL.", i);
+            ck_assert_msg(old_ckp->window_data == NULL,
+                          "Old checkpoint %d window should be NULL.", i);
+        }
+    }
+
+    offset = zx_index->offset.uncomp - step;
+    while (offset > 0) {
+        zx_ret = zidx_seek(new_index, offset, ZX_SEEK_SET);
+        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
+
+        r_len = zidx_read(new_index, buffer, sizeof(buffer));
         ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
 
         ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
@@ -254,6 +355,7 @@ Suite* libzidx_test_suite()
 
     tcase_add_test(tc_core, test_comp_file_read);
     tcase_add_test(tc_core, test_comp_file_seek);
+    tcase_add_test(tc_core, test_export_import);
 
     suite_add_tcase(s, tc_core);
 

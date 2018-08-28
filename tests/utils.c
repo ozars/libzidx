@@ -1,7 +1,10 @@
+#define _POSIX_SOURCE
+#include<stdio.h>
+#undef _POSIX_SOURCE
+
 #include "utils.h"
 
 #include<assert.h>
-#include<stdio.h>
 
 #include<zlib.h>
 #include<pcg_variants.h>
@@ -29,30 +32,36 @@ uint8_t get_random_byte()
 {
     static int remaining = 0;
     static uint32_t rndi;
+    uint8_t ret;
     if (remaining == 0) {
         rndi = get_random_int();
         remaining = sizeof(rndi);
     }
     remaining--;
-    return (rndi >> (8 * remaining)) & 0xFFU;
+    ret = (rndi >> (8 * remaining)) & 0xFFU;
+    return ret % 100;
 }
 
-const char* get_random_compressed_file(uint64_t seed, long length, uint8_t *data)
+FILE* get_random_compressed_file(uint64_t seed, long length, uint8_t *data)
 {
     assert(length > 0);
 
-    const char *fname;
+    FILE *fhandle;
     long written;
     gzFile gzf;
 
     int z_ret;
+    int fd = -1;
 
     gzf = NULL;
 
-    fname = tmpnam(NULL);
-    if (!fname) goto fail;
+    fhandle = tmpfile();
+    if (!fhandle) goto fail;
 
-    gzf = gzopen(fname, "wb");
+    fd = dup(fileno(fhandle));
+    if (fd < 0) goto fail;
+
+    gzf = gzdopen(fd, "wb");
     if (!gzf) goto fail;
 
     initialize_srandom(seed);
@@ -67,10 +76,11 @@ const char* get_random_compressed_file(uint64_t seed, long length, uint8_t *data
     z_ret = gzclose(gzf);
     if(z_ret != Z_OK) goto fail;
 
-    return fname;
+    return fhandle;
 
 fail:
     if (gzf) gzclose(gzf);
+    if (fd >= 0) close(fd);
     return NULL;
 }
 

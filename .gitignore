@@ -10,14 +10,14 @@
 !/tests/check_*.*
 *.log
 *.trs
+*.tmp
 
 # Profiling Artifacts
 gmon.out
 prof_output
 
 # VIM files
-*.swp
-*.swa
+*.sw?
 
 # ctags output
 tags
