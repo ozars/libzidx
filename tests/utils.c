@@ -32,12 +32,14 @@ uint8_t get_random_byte()
 {
     static int remaining = 0;
     static uint32_t rndi;
+    uint8_t ret;
     if (remaining == 0) {
         rndi = get_random_int();
         remaining = sizeof(rndi);
     }
     remaining--;
-    return (rndi >> (8 * remaining)) & 0xFFU;
+    ret = (rndi >> (8 * remaining)) & 0xFFU;
+    return ret % 100;
 }
 
 FILE* get_random_compressed_file(uint64_t seed, long length, uint8_t *data)
