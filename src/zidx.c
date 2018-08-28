@@ -1095,7 +1095,11 @@ int zidx_seek_ex(zidx_index* index,
     return ZX_RET_OK;
 }
 
-off_t zidx_tell(zidx_index* index);
+off_t zidx_tell(zidx_index* index)
+{
+    return index->offset.uncomp;
+}
+
 int zidx_rewind(zidx_index* index);
 
 typedef struct spacing_data_s
