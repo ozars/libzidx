@@ -123,7 +123,7 @@ int (*zidx_import_filter_callback)(void *filter_context,
                                    zidx_checkpoint_offset *offset);
 
 typedef
-int (*zidx_export_filter_callback)(void *export_context,
+int (*zidx_export_filter_callback)(void *filter_context,
                                    zidx_index *index,
                                    zidx_checkpoint *offset);
 
@@ -133,7 +133,7 @@ int zidx_import_ex(zidx_index *index,
                    void *filter_context);
 
 int zidx_export_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   zidx_stream *stream,
                    zidx_export_filter_callback filter,
                    void *filter_context);
 

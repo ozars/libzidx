@@ -1522,12 +1522,6 @@ int zidx_fit_index_size(zidx_index* index)
                                   index->list_capacity - index->list_count);
 }
 
-/* TODO: Implement these. */
-int zidx_export_ex(zidx_index *index,
-                   const zidx_stream *stream,
-                   zidx_export_filter_callback filter,
-                   void *filter_context);
-
 static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
 {
     int needed_size;
@@ -1814,35 +1808,17 @@ fail:
 
 }
 
-int zidx_import(zidx_index *index, FILE* input_index_file)
-{
-    /* Input stream to read index data. */
-    zidx_stream* input_stream;
-
-    /* Function return value. */
-    int ret;
-
-    input_stream = zidx_stream_from_file(input_index_file);
-    if (input_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
-        return ZX_ERR_MEMORY;
-    }
-
-    ret = zidx_import_ex(index, input_stream, NULL, NULL);
-
-    free(input_stream);
-
-    return ret;
-}
-
-int zidx_export(zidx_index *index, FILE* output_index_file)
+int zidx_export_ex(zidx_index *index,
+                   zidx_stream *stream,
+                   zidx_export_filter_callback filter,
+                   void *filter_context)
 {
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_WRITE_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = zidx_stream_write(output_stream, (uint8_t*)buf, buflen); \
+            s_ret = zidx_stream_write(stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = zidx_stream_error(output_stream); \
+                s_err = zidx_stream_error(stream); \
                 ZX_LOG("ERROR: Couldn't write " name " (%d).\n", s_err); \
                 return s_err; \
             } \
@@ -1858,9 +1834,6 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
                 ZX_LOG("Exported " name " (hex %02X)\n", ((uint8_t*)buf)[0]); \
             } \
         } while(0)
-
-    /* Output stream to write index data. */
-    zidx_stream* output_stream;
 
     /* Used for storing return values of stream calls. */
     int s_ret;
@@ -1890,16 +1863,13 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
         ZX_LOG("ERROR: index list is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-    if (output_index_file == NULL) {
-        ZX_LOG("ERROR: Output index file is NULL.\n");
+    if (stream == NULL) {
+        ZX_LOG("ERROR: output stream is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-
-    /* Create output stream. */
-    output_stream = zidx_stream_from_file(output_index_file);
-    if (output_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
-        return ZX_ERR_MEMORY;
+    if (filter != NULL || filter_context != NULL) {
+        ZX_LOG("ERROR: export filtering not supported.\n");
+        return ZX_ERR_NOT_IMPLEMENTED;
     }
 
     /*
@@ -1951,11 +1921,11 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
      */
 
     ZX_LOG("Completed writing header of imported file at offset %jd.\n",
-           (intmax_t)zidx_stream_tell(output_stream));
+           (intmax_t)zidx_stream_tell(stream));
 
     /* Compute beginning offset of window data. TODO: Extra space is assumed to
      * be zero. */
-    window_off = zidx_stream_tell(output_stream);
+    window_off = zidx_stream_tell(stream);
     if (window_off < 0) {
         ZX_LOG("ERROR: Couldn't tell stream offset (%ld).\n", window_off);
         return ZX_ERR_STREAM_SEEK;
@@ -2011,6 +1981,49 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     return ZX_RET_OK;
 
     #undef ZX_WRITE_TEMPLATE_
+}
+
+int zidx_import(zidx_index *index, FILE* input_index_file)
+{
+    /* Input stream to read index data. */
+    zidx_stream* input_stream;
+
+    /* Function return value. */
+    int ret;
+
+    input_stream = zidx_stream_from_file(input_index_file);
+    if (input_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    ret = zidx_import_ex(index, input_stream, NULL, NULL);
+
+    free(input_stream);
+
+    return ret;
+}
+
+int zidx_export(zidx_index *index, FILE* output_index_file)
+
+{
+    /* Input stream to read index data. */
+    zidx_stream* output_stream;
+
+    /* Function return value. */
+    int ret;
+
+    output_stream = zidx_stream_from_file(output_index_file);
+    if (output_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    ret = zidx_export_ex(index, output_stream, NULL, NULL);
+
+    free(output_stream);
+
+    return ret;
 }
 
 #ifdef __cplusplus
