@@ -1523,11 +1523,6 @@ int zidx_fit_index_size(zidx_index* index)
 }
 
 /* TODO: Implement these. */
-int zidx_import_ex(zidx_index *index,
-                   const zidx_stream *stream,
-                   zidx_import_filter_callback filter,
-                   void *filter_context);
-
 int zidx_export_ex(zidx_index *index,
                    const zidx_stream *stream,
                    zidx_export_filter_callback filter,
@@ -1565,19 +1560,22 @@ static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
     return ZX_RET_OK;
 }
 
-int zidx_import(zidx_index *index, FILE* input_index_file)
+int zidx_import_ex(zidx_index *index,
+                   zidx_stream *stream,
+                   zidx_import_filter_callback filter,
+                   void *filter_context)
 {
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_READ_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = zidx_stream_read(input_stream, (uint8_t*)buf, buflen); \
+            s_ret = zidx_stream_read(stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = zidx_stream_error(input_stream); \
+                s_err = zidx_stream_error(stream); \
                 if (s_err) { \
                     ZX_LOG("ERROR: Couldn't read " name " (%d).\n", s_err); \
                     ret = s_err; \
                     goto fail; \
-                } else if(zidx_stream_eof(input_stream)) { \
+                } else if(zidx_stream_eof(stream)) { \
                     ZX_LOG("ERROR: Unexpected end-of-file while reading" name \
                            ".\n"); \
                     ret = ZX_ERR_STREAM_EOF; \
@@ -1600,9 +1598,6 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
                 ZX_LOG("Imported " name " (hex %02X)\n", ((uint8_t*)buf)[0]); \
             } \
         } while(0)
-
-    /* Input stream to read index data. */
-    zidx_stream* input_stream;
 
     /* Temporary index used for shadow index. This is to protect original index
      * from changes in case of a failure. Related parameters of temp_index will
@@ -1645,15 +1640,13 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
         ZX_LOG("ERROR: index list is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-    if (input_index_file == NULL) {
-        ZX_LOG("ERROR: Input index file is NULL.\n");
+    if (stream == NULL) {
+        ZX_LOG("ERROR: input stream is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-
-    input_stream = zidx_stream_from_file(input_index_file);
-    if (input_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
-        return ZX_ERR_MEMORY;
+    if (filter != NULL || filter_context != NULL) {
+        ZX_LOG("ERROR: import filtering not supported.\n");
+        return ZX_ERR_NOT_IMPLEMENTED;
     }
 
     temp_index = calloc(1, sizeof(zidx_index));
@@ -1721,7 +1714,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
      */
 
     ZX_LOG("Completed reading header of imported file at offset %jd.\n",
-           (intmax_t)zidx_stream_tell(input_stream));
+           (intmax_t)zidx_stream_tell(stream));
 
     /* Allocate space for list. */
     temp_index->list = calloc(temp_index->list_count, sizeof(zidx_checkpoint));
@@ -1818,6 +1811,28 @@ fail:
 
     return ret;
     #undef ZX_READ_TEMPLATE_
+
+}
+
+int zidx_import(zidx_index *index, FILE* input_index_file)
+{
+    /* Input stream to read index data. */
+    zidx_stream* input_stream;
+
+    /* Function return value. */
+    int ret;
+
+    input_stream = zidx_stream_from_file(input_index_file);
+    if (input_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    ret = zidx_import_ex(index, input_stream, NULL, NULL);
+
+    free(input_stream);
+
+    return ret;
 }
 
 int zidx_export(zidx_index *index, FILE* output_index_file)

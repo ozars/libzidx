@@ -118,7 +118,7 @@ int zidx_fit_index_size(zidx_index* index);
 /* index import/export functions */
 
 typedef
-int (*zidx_import_filter_callback)(void *import_context,
+int (*zidx_import_filter_callback)(void *filter_context,
                                    zidx_index *index,
                                    zidx_checkpoint_offset *offset);
 
@@ -128,7 +128,7 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_checkpoint *offset);
 
 int zidx_import_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   zidx_stream *stream,
                    zidx_import_filter_callback filter,
                    void *filter_context);
 
