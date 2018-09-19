@@ -479,7 +479,7 @@ static int read_gzip_trailer(zidx_index* index)
     memcpy(trailer, zs->next_in, read_bytes);
     zs->next_in  += read_bytes;
     zs->avail_in -= read_bytes;
-    index->offset.uncomp += read_bytes;
+    index->offset.comp += read_bytes;
 
     /* If there are more data to be read for trailer... */
     if (read_bytes < 8) {
@@ -491,7 +491,7 @@ static int read_gzip_trailer(zidx_index* index)
                    " from stream.\n", 8 - read_bytes);
             return ZX_ERR_STREAM_READ;
         }
-        index->offset.uncomp += s_read_len;
+        index->offset.comp += s_read_len;
         if (s_read_len != 8 - read_bytes) {
             ZX_LOG("ERROR: File ended before trailer ends.");
             return ZX_ERR_STREAM_EOF;
