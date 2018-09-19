@@ -109,7 +109,8 @@ int zidx_fill_checkpoint(zidx_index* index,
                          zidx_checkpoint* new_checkpoint,
                          zidx_checkpoint_offset* offset);
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
-int zidx_get_checkpoint(zidx_index* index, off_t offset);
+int zidx_get_checkpoint_idx(zidx_index* index, off_t offset);
+zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx);
 
 int zidx_extend_index_size(zidx_index* index, int nmembers);
 int zidx_shrink_index_size(zidx_index* index, int nmembers);

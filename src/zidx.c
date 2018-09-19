@@ -965,8 +965,8 @@ int zidx_seek_ex(zidx_index* index,
     /* TODO: Implement whence. Currently it is ignored. Implement sanity check
      * for it as well. */
 
-    checkpoint_idx = zidx_get_checkpoint(index, offset);
-    checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
+    checkpoint_idx = zidx_get_checkpoint_idx(index, offset);
+    checkpoint = zidx_get_checkpoint(index, checkpoint_idx);
 
     if (checkpoint == NULL) {
         ZX_LOG("No checkpoint found.\n");
@@ -1364,7 +1364,7 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     return ZX_RET_OK;
 }
 
-int zidx_get_checkpoint(zidx_index* index, off_t offset)
+int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
 {
     /* TODO: Return EOF error if EOF is known and offset is beyond it. */
     /* TODO: Add more logging for returns. I don't feel like doing it today. */
@@ -1447,6 +1447,14 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     return ZX_ERR_NOT_FOUND;
 
     #undef ZX_OFFSET_
+}
+
+zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx)
+{
+    if (idx >= 0 && idx < index->list_count) {
+        return &index->list[idx];
+    }
+    return NULL;
 }
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
