@@ -64,6 +64,8 @@ struct zidx_index_s
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
     char inflate_initialized;
+    off_t compressed_size;
+    off_t uncompressed_size;
 };
 
 /**
@@ -672,6 +674,10 @@ int zidx_index_init_ex(zidx_index* index,
     /* Set checksum option. */
     index->checksum_option = checksum_option;
 
+    /* Set default size. */
+    index->compressed_size = -1;
+    index->uncompressed_size = -1;
+
     ZX_LOG("Initialization was successful.\n");
 
     return ZX_RET_OK;
@@ -876,6 +882,13 @@ int zidx_read_ex(zidx_index* index,
                 }
             }
             index->stream_state = ZX_STATE_END_OF_FILE;
+
+            /* Assign file sizes. */
+            index->compressed_size = index->offset.comp;
+            index->uncompressed_size = index->offset.uncomp;
+            ZX_LOG("Compressed/uncompressed size: %jd/%jd.\n",
+                   (intmax_t) index->compressed_size,
+                   (intmax_t) index->uncompressed_size);
             break;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
@@ -1612,6 +1625,7 @@ int zidx_import_ex(zidx_index *index,
     /* Fixed length types. Used for reading fixed-length data to int. */
     int64_t i64;
     int32_t i32;
+    off_t off;
 
     /* General purpose byte buffer. */
     uint8_t buf[8];
@@ -1672,13 +1686,25 @@ int zidx_import_ex(zidx_index *index,
     /* Read the type of indexed file. */
     ZX_READ_TEMPLATE_(&type_of_file, sizeof(type_of_file), "the type of file");
 
-    /* TODO!!!!!!!!!!!!!!!! HANDLE FILE TYPE. */
+    /* TODO: File type check is not done. Do it. */
 
-    /* Read the length of compressed file. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 8, "the compressed length");
+    /* Read the length of compressed file. */
+    ZX_READ_TEMPLATE_(&i64, 8, "the compressed length");
+    off = i64;
+    if (off != i64) {
+        ZX_LOG("ERROR: Compressed length doesn't fit to offset type.\n");
+        return ZX_ERR_INVALID_OP;
+    }
+    index->compressed_size = off;
 
     /* Read the length of uncompressed file. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 8, "the uncompressed length");
+    ZX_READ_TEMPLATE_(&i64, 8, "the uncompressed length");
+    off = i64;
+    if (off != i64) {
+        ZX_LOG("ERROR: Uncompressed length doesn't fit to offset type.\n");
+        return ZX_ERR_INVALID_OP;
+    }
+    index->uncompressed_size = off;
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 4, "checksum of the index");
@@ -1893,11 +1919,13 @@ int zidx_export_ex(zidx_index *index,
     /* Write the type of indexed file. */
     ZX_WRITE_TEMPLATE_(&type_of_file, sizeof(type_of_file), "the type of file");
 
-    /* Write the length of compressed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 8, "the compressed length");
+    /* Write the length of compressed file. */
+    i64 = index->compressed_size;
+    ZX_WRITE_TEMPLATE_(&i64, 8, "the compressed length");
 
-    /* Write the length of uncompressed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 8, "the uncompressed length");
+    /* Write the length of uncompressed file. */
+    i64 = index->uncompressed_size;
+    ZX_WRITE_TEMPLATE_(&i64, 8, "the uncompressed length");
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");

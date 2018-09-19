@@ -28,12 +28,29 @@ void unchecked_setup()
     uncomp_data = malloc(ZX_TEST_COMP_FILE_LENGTH);
     ck_assert_msg(uncomp_data, "Couldn't allocate space for temporary data.");
 
+    intmax_t comp_size;
+    intmax_t uncomp_size = ZX_TEST_COMP_FILE_LENGTH;
+
     comp_file = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
                                            ZX_TEST_COMP_FILE_LENGTH,
                                            uncomp_data);
 
     ck_assert_msg(comp_file, "Couldn't create temporary compressed file.");
 
+#ifdef ZX_DEBUG
+    ck_assert_msg(fseek(comp_file, 0, SEEK_END) == 0,
+                  "Couldn't seek on temporary compressed file.");
+
+    comp_size = ftell(comp_file);
+    ck_assert_msg(comp_size != -1,
+                  "Couldn't get position in temporary compressed file.");
+
+    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
+                  "Couldn't seek on temporary compressed file.");
+
+    ZX_LOG("Compressed/uncompressed test file size: %jd/%jd.\n",
+           comp_size, uncomp_size);
+#endif
 }
 
 void unchecked_teardown()
@@ -272,6 +289,16 @@ START_TEST(test_export_import)
     ck_assert_msg(new_index->list_count == zx_index->list_count,
                   "Couldn't match the number of elements on new (%d) and old (%d) list.",
                   new_index->list_count, zx_index->list_count);
+
+    ck_assert_msg(new_index->compressed_size == zx_index->compressed_size,
+                  "Couldn't match compressed sizes on new (%jd) and old (%jd) list.",
+                  (intmax_t)new_index->compressed_size,
+                  (intmax_t)zx_index->compressed_size);
+
+    ck_assert_msg(new_index->uncompressed_size == zx_index->uncompressed_size,
+                  "Couldn't match uncompressed sizes on new (%jd) and old (%jd) list.",
+                  (intmax_t)new_index->uncompressed_size,
+                  (intmax_t)zx_index->uncompressed_size);
 
     for (i = 0; i < new_index->list_count; i++)
     {
