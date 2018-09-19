@@ -702,45 +702,64 @@ int zidx_index_destroy(zidx_index* index)
     zidx_checkpoint *it;
     zidx_checkpoint *end;
 
-    /* If index is NULL, okay is returned (to be consistent with free). */
+    /* If index is NULL, return error. */
     if (!index) {
         ZX_LOG("Nothing is destroyed in index, since it's NULL.\n");
-        return ZX_RET_OK;
+        return ZX_ERR_PARAMS;
     }
-
-    /* Unless an error happens, okay will be returned. */
-    ret = ZX_RET_OK;
 
     /* z_stream should not be NULL. */
     if (!index->z_stream) {
         ZX_LOG("ERROR: index->z_stream is NULL.\n");
-        ret = ZX_ERR_CORRUPTED;
-    } else {
-        /* Release internal buffers of z_stream. */
-        if (index->inflate_initialized) {
-            z_ret = inflateEnd(index->z_stream);
-            if (z_ret != Z_OK) {
-                ZX_LOG("ERROR: inflateEnd returned error (%d).\n", z_ret);
-                ret = ZX_ERR_CORRUPTED;
-            }
-        }
-        free(index->z_stream);
+        return ZX_ERR_CORRUPTED;
     }
 
     /* Checkpoint list should not be NULL if there is some capacity. */
     if (!index->list && index->list_capacity > 0) {
         ZX_LOG("ERROR: index->list is NULL, although capacity is %d.\n",
                index->list_capacity);
-        ret = ZX_ERR_CORRUPTED;
+        return ZX_ERR_CORRUPTED;
+    }
 
-    /* If it's NULL and there is some capacity, free it. */
-    } else if (index->list) {
+    /* Checkpoint list should be NULL if there is no capacity. */
+    if (index->list != NULL && index->list_capacity == 0) {
+        ZX_LOG("ERROR: index->list is not NULL, although capacity is %d.\n",
+               index->list_capacity);
+        return ZX_ERR_CORRUPTED;
+    }
+
+    /* Unless an error happens, okay will be returned. */
+    ret = ZX_RET_OK;
+
+    /* Since z_stream is not NULL, release internal buffers of z_stream. */
+    if (index->inflate_initialized) {
+        z_ret = inflateEnd(index->z_stream);
+        if (z_ret != Z_OK) {
+            ZX_LOG("ERROR: inflateEnd returned error (%d).\n", z_ret);
+            ret = ZX_ERR_ZLIB(z_ret);
+        }
+    }
+    /* If internal buffers are released succesfully, release the z_stream
+     * itself. */
+    if (ret == ZX_RET_OK) {
+        free(index->z_stream);
+        index->z_stream = NULL;
+    }
+
+    /* If index-> list is not NULL, free it. */
+    if (index->list) {
         /* Release window data on each checkpoint. */
         end = index->list + index->list_count;
         for (it = index->list; it < end; it++) {
             free(it->window_data);
         }
         free(index->list);
+
+        /* This members are updated because user can call this function again
+         * if it return error, so we are leaving index list in a valid state. */
+        index->list = NULL;
+        index->list_capacity = 0;
+        index->list_count = 0;
     }
     /* Else is unnecessary, since this practically means capacity is zero and
      * list is NULL. Therefore, nothing to free.  */
