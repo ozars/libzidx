@@ -1119,6 +1119,7 @@ typedef struct spacing_data_s
 {
     off_t last_offset;
     off_t spacing_length;
+    char is_uncompressed;
 } spacing_data;
 
 static int spacing_callback(void *context,
@@ -1138,8 +1139,17 @@ static int spacing_callback(void *context,
     /* Casted alias for context. */
     spacing_data* data = context;
 
+    off_t current_offset;
+
+    /* Determine which offsets to use. */
+    if (data->is_uncompressed) {
+        current_offset = offset->uncomp;
+    } else {
+        current_offset = offset->comp;
+    }
+
     /* If spacing_length bytes passed since last saved checkpoint... */
-    if (offset->uncomp >= data->last_offset + data->spacing_length) {
+    if (current_offset >= data->last_offset + data->spacing_length) {
 
         /* Create a new checkpoint. */
         ckp = zidx_create_checkpoint();
@@ -1165,6 +1175,9 @@ static int spacing_callback(void *context,
             ret = zx_ret;
             goto cleanup;
         }
+
+        /* Set last_offset. */
+        data->last_offset = current_offset;
     }
 
     return ZX_RET_OK;
@@ -1177,7 +1190,9 @@ cleanup:
 }
 
 
-int zidx_build_index(zidx_index* index, off_t spacing_length)
+int zidx_build_index(zidx_index* index,
+                     off_t spacing_length,
+                     char is_uncompressed)
 {
     /* Context for spacing_callback. */
     spacing_data data;
@@ -1185,6 +1200,7 @@ int zidx_build_index(zidx_index* index, off_t spacing_length)
     /* Assign last uncompressed offset to 0, and pass spacing_length. */
     data.last_offset = 0;
     data.spacing_length = spacing_length;
+    data.is_uncompressed = is_uncompressed;
 
     return zidx_build_index_ex(index, spacing_callback, &data);
 }

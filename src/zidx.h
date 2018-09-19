@@ -99,7 +99,9 @@ int zidx_seek_ex(zidx_index* index,
 off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
 
-int zidx_build_index(zidx_index* index, off_t spacing_length);
+int zidx_build_index(zidx_index* index,
+                     off_t spacing_length,
+                     char is_uncompressed);
 int zidx_build_index_ex(zidx_index* index,
                         zidx_block_callback block_callback,
                         void *callback_context);

@@ -191,20 +191,15 @@ int comp_file_seek_callback(void *context,
     return 0;
 }
 
-START_TEST(test_comp_file_seek)
+void make_two_seek_passes_over_file()
 {
     int zx_ret;
     int r_len;
     uint8_t buffer[1024];
-    int file_completed;
     int i;
     long offset;
     long step = 1023;
-    int num_blocks = 0;
     long last_offset;
-
-    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
 
     last_offset = zx_index->offset.uncomp;
 
@@ -242,6 +237,48 @@ START_TEST(test_comp_file_seek)
                               offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
                               buffer[i]);
     } while(r_len != 0);
+
+}
+
+START_TEST(test_comp_file_seek)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.\n");
+
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
+}
+END_TEST
+
+START_TEST(test_comp_file_seek_comp_space)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.\n");
+
+    zx_ret = zidx_build_index(zx_index, 1048576, 0);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
+}
+END_TEST
+
+START_TEST(test_comp_file_seek_uncomp_space)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.\n");
+
+    zx_ret = zidx_build_index(zx_index, 1048576, 1);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
 }
 END_TEST
 
@@ -382,6 +419,8 @@ Suite* libzidx_test_suite()
 
     tcase_add_test(tc_core, test_comp_file_read);
     tcase_add_test(tc_core, test_comp_file_seek);
+    tcase_add_test(tc_core, test_comp_file_seek_comp_space);
+    tcase_add_test(tc_core, test_comp_file_seek_uncomp_space);
     tcase_add_test(tc_core, test_export_import);
 
     suite_add_tcase(s, tc_core);
