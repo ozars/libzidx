@@ -91,9 +91,9 @@ void teardown_stream_api()
     ck_assert_msg(fclose(f) == 0, "File couldn't be closed.");
 }
 
-
 START_TEST(test_comp_file_init)
 {
+    ZX_LOG("TEST: Stream interface.\n");
     ck_assert(comp_stream->read    == zidx_raw_file_read);
     ck_assert(comp_stream->write   == zidx_raw_file_write);
     ck_assert(comp_stream->seek    == zidx_raw_file_seek);
@@ -101,7 +101,7 @@ START_TEST(test_comp_file_init)
     ck_assert(comp_stream->length  == zidx_raw_file_length);
     ck_assert(comp_stream->eof     == zidx_raw_file_eof);
     ck_assert(comp_stream->error   == zidx_raw_file_error);
-    ck_assert(comp_stream->context != NULL);
+    ck_assert(comp_stream->context == comp_file);
 }
 END_TEST
 
@@ -114,7 +114,7 @@ void setup_core()
 
     setup_stream_api();
 
-    zx_index = malloc(sizeof(zidx_index));
+    zx_index = zidx_index_create();
     ck_assert_msg(zx_index, "Couldn't allocate space for index.");
 
     zx_ret = zidx_index_init(zx_index, comp_stream);
@@ -142,6 +142,8 @@ START_TEST(test_comp_file_read)
     int file_completed;
     int i;
     long offset;
+
+    ZX_LOG("TEST: Reading compressed file.\n");
 
     offset = 0;
     file_completed = 0;
@@ -298,6 +300,8 @@ START_TEST(test_export_import)
     zidx_stream *new_stream;
     zidx_checkpoint *new_ckp;
     zidx_checkpoint *old_ckp;
+
+    ZX_LOG("TEST: Importing/exporting index.\n");
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
