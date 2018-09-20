@@ -11,59 +11,135 @@
 
 #include "zidx_stream.h"
 
-#define ZX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
-#define ZX_DEFAULT_WINDOW_SIZE                 (32768)
-#define ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
-#define ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE    (32768)
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/**
+ * \name DefaultValues
+ *
+ * Default initialization values used by zidx_index_init() call.
+ *
+ * @{
+ */
+
+/** Default value for initial capacity of checkpoint list. */
+#define ZX_DEFAULT_INITIAL_LIST_CAPACITY (8)
+
+/** Default value for zlib window size. */
+#define ZX_DEFAULT_WINDOW_SIZE (32768)
+
+/** Default value for size of the buffer used for decompression. */
+#define ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
+
+/**
+ * Default value for the size of buffer for discarding unused data while seeking
+ * to an offset inside a compressed block.
+ */
+#define ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE (32768)
+
+/** }@ */
+
+/**
+ * \name ReturnValues
+ *
+ * Return values used by zidx functions.
+ *
+ * All error codes must be negative. Users can get return value of callback
+ * functions, however it's users responsibility to avoid conflicting return
+ * values in callbacks. Users are encouraged to leave return values in the range
+ * of -1 to -256 library use.
+ *
+ * Errors caused by zlib library will be returned by passing through
+ * ZX_ERR_ZLIB() macro, so user can use this macro to check for errors.
+ *
+ * @{
+ */
+
+#define ZX_RET_OK           (0) /**< Sucessful call. */
+#define ZX_ERR_PARAMS      (-1) /**< Error in function parameter. */
+#define ZX_ERR_MEMORY      (-2) /**< Error in memory allocation. */
+#define ZX_ERR_CORRUPTED   (-3) /**< Corrupted file or data structure. */
+#define ZX_ERR_STREAM_READ (-4) /**< Error in reading stream. */
+#define ZX_ERR_STREAM_EOF  (-5) /**< Unexpected EOF error in stream. */
+#define ZX_ERR_STREAM_SEEK (-6) /**< Error in seeking stream. */
+#define ZX_ERR_INVALID_OP  (-7) /**< Invalid operation. */
+#define ZX_ERR_NOT_FOUND   (-8) /**< Requested item is not found. */
+#define ZX_ERR_OVERFLOW    (-9) /**< Data does not fit to the given data
+                                  structure. */
+#define ZX_ERR_NOT_IMPLEMENTED (-10)       /**< Feature is not implemented. */
+#define ZX_ERR_ZLIB(err)       (-64 + err) /**< Error caused by zlib. */
+
+/** @} */
+
+/**
+ * \name OpaqueDataStructures
+ * Opaque data structures.
+ *
+ * @{
+ */
+
 #ifndef ZLIB_H
-/* Typedef declaration of z_stream from zlib.h required for z_stream* */
+/** Opaque declaration of z_stream from `zlib.h`, if not declared already. */
 typedef struct z_stream_s z_stream;
 #endif
 
-/* Return and error codes. */
-#define ZX_RET_OK (0)
-#define ZX_ERR_PARAMS (-1)
-#define ZX_ERR_MEMORY (-2)
-#define ZX_ERR_CORRUPTED (-3)
-#define ZX_ERR_INFLATE_INIT (-4)
-#define ZX_ERR_STREAM_READ (-5)
-#define ZX_ERR_STREAM_EOF (-6)
-#define ZX_ERR_STREAM_SEEK (-7)
-#define ZX_ERR_INVALID_OP (-8)
-#define ZX_ERR_NOT_FOUND (-9)
-#define ZX_ERR_NOT_IMPLEMENTED (-10)
-#define ZX_ERR_OVERFLOW (-11)
-
-#define ZX_ERR_ZLIB(err) (-64 + err)
-#define ZX_ERR_CALLBACK(err) (-16384 + err)
-
-/* index/checkpoint data types */
-
+/**
+ * Keeps state of opened zidx stream state as well as other data structures
+ * needed.
+ */
 typedef struct zidx_index_s zidx_index;
+
+/**
+ * Keeps information about a single checkpoint.
+ */
 typedef struct zidx_checkpoint_s zidx_checkpoint;
+
+/**
+ * Keeps information about compressed and uncompressed offsets.
+ */
 typedef struct zidx_checkpoint_offset_s zidx_checkpoint_offset;
 
+/** @} */
+
+/**
+ * \name ConfigurationValues
+ *
+ * Types defined for denoting various configuration.
+ * @{
+ */
+
+/**
+ * Type of the input stream file. There isn't "just zlib file type" option due
+ * to design of zlib library.
+ */
 typedef enum zidx_stream_type
 {
-    ZX_STREAM_DEFLATE,
-    ZX_STREAM_GZIP,
-    ZX_STREAM_GZIP_OR_ZLIB
+    ZX_STREAM_DEFLATE      = 1, /**< DEFLATE format. */
+    ZX_STREAM_GZIP         = 2, /**< GZIP format. */
+    ZX_STREAM_GZIP_OR_ZLIB = 3  /**< GZIP or ZLIB format determined by file
+                                  header. */
 } zidx_stream_type;
 
+/**
+ * Type of the checksum algorithm.
+ *
+ * Since the library treats all data as deflate blocks, underlying checksum
+ * control mechanism of zlib is disabled. Instead, this library can be
+ * configured for a given checksum mechanism.
+ */
 typedef enum zidx_checksum_option
 {
-    ZX_CHECKSUM_DISABLED,
-    ZX_CHECKSUM_DEFAULT,
-    ZX_CHECKSUM_FORCE_CRC32,
-    ZX_CHECKSUM_FORCE_ADLER32
+    ZX_CHECKSUM_DISABLED = 0,      /**< Do not use any checksum algorithm. */
+    ZX_CHECKSUM_DEFAULT  = 1,      /**< Use default checksum algorithm for the
+                                     file type. By default DEFLATE doesn't use
+                                     any checksum mechanisms, GZIP uses CRC-32,
+                                     and ZLIB uses Adler-32. */
+    ZX_CHECKSUM_FORCE_CRC32   = 2, /**< Force using CRC-32. */
+    ZX_CHECKSUM_FORCE_ADLER32 = 3  /**< Force using Adler-32. */
 } zidx_checksum_option;
 
-/* read/write/seek/index functions */
+/** @} */
 
 typedef
 int (*zidx_block_callback)(void *context,
@@ -142,7 +218,6 @@ int zidx_export_ex(zidx_index *index,
 
 int zidx_import(zidx_index *index, FILE* input_index_file);
 int zidx_export(zidx_index *index, FILE* output_index_file);
-
 
 #ifdef __cplusplus
 } // extern "C"

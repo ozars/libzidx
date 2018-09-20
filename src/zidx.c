@@ -345,7 +345,7 @@ static int read_headers(zidx_index* index,
         if (s_ret != 0) {
             ZX_LOG("WARNING: Callback returned non-zero (%d). "
                    "Returning from function.\n", s_ret);
-            return ZX_ERR_CALLBACK(s_ret);
+            return s_ret;
         }
     }
     return ZX_RET_OK;
@@ -424,7 +424,7 @@ static int read_deflate_blocks(zidx_index* index,
                     if (s_ret != 0) {
                         ZX_LOG("WARNING: Callback returned non-zero (%d). "
                                "Returning from function.\n", s_ret);
-                        return ZX_ERR_CALLBACK(s_ret);
+                        return s_ret;
                     }
                 }
             }
