@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <zlib.h>
+#include <streamlike.h>
+#include <streamlike/file.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,7 +50,7 @@ struct zidx_checkpoint_s
 
 struct zidx_index_s
 {
-    zidx_stream *comp_stream;
+    streamlike_t *comp_stream;
     zidx_stream_state stream_state;
     zidx_stream_type stream_type;
     zidx_checkpoint_offset offset;
@@ -288,7 +290,7 @@ static int read_headers(zidx_index* index,
     }
 
     /* Aliases for frequently used members of index. */
-    zidx_stream* stream = index->comp_stream;
+    streamlike_t* stream = index->comp_stream;
     z_stream* zs = index->z_stream;
     uint8_t* buf = index->comp_data_buffer;
     int buf_len  = index->comp_data_buffer_size;
@@ -300,8 +302,8 @@ static int read_headers(zidx_index* index,
     while (!header_completed) {
         /* Read from stream if no data is available in buffer. */
         if (zs->avail_in == 0) {
-            s_read_len = zidx_stream_read(stream, buf, buf_len);
-            s_ret = zidx_stream_error(stream);
+            s_read_len = sl_read(stream, buf, buf_len);
+            s_ret = sl_error(stream);
             if (s_ret) {
                 ZX_LOG("ERROR: Reading from stream (%d).\n", s_ret);
                 return ZX_ERR_STREAM_READ;
@@ -372,7 +374,7 @@ static int read_deflate_blocks(zidx_index* index,
     }
 
     /* Aliases for frequently used members of index. */
-    zidx_stream* stream = index->comp_stream;
+    streamlike_t* stream = index->comp_stream;
     z_stream* zs = index->z_stream;
     uint8_t* buf = index->comp_data_buffer;
     int buf_len  = index->comp_data_buffer_size;
@@ -381,8 +383,8 @@ static int read_deflate_blocks(zidx_index* index,
     while (!reading_completed) {
         /* Read from stream if no data is available in buffer. */
         if(zs->avail_in == 0) {
-            s_read_len = zidx_stream_read(stream, buf, buf_len);
-            s_ret = zidx_stream_error(stream);
+            s_read_len = sl_read(stream, buf, buf_len);
+            s_ret = sl_error(stream);
             if (s_ret) {
                 ZX_LOG("ERROR: Reading from stream (%d).\n",
                        s_ret);
@@ -467,7 +469,7 @@ static int read_gzip_trailer(zidx_index* index)
     }
 
     /* Aliases. */
-    zidx_stream* stream = index->comp_stream;
+    streamlike_t* stream = index->comp_stream;
     z_stream* zs = index->z_stream;
 
     /* Number of bytes already read into buffer. */
@@ -482,9 +484,9 @@ static int read_gzip_trailer(zidx_index* index)
     /* If there are more data to be read for trailer... */
     if (read_bytes < 8) {
         /* ...read it from stream. */
-        s_read_len = zidx_stream_read(stream, trailer, 8 - read_bytes);
+        s_read_len = sl_read(stream, trailer, 8 - read_bytes);
 
-        if (zidx_stream_error(stream) != 0) {
+        if (sl_error(stream) != 0) {
             ZX_LOG("ERROR: Error while reading remaining %d bytes of trailer "
                    " from stream.\n", 8 - read_bytes);
             return ZX_ERR_STREAM_READ;
@@ -505,8 +507,8 @@ zidx_index* zidx_index_create()
     return index;
 }
 
-int zidx_index_init(zidx_index* index,
-                     zidx_stream* comp_stream)
+int zidx_index_init(zidx_index *index,
+                    streamlike_t *comp_stream)
 {
     return zidx_index_init_ex(index,
                               comp_stream,
@@ -519,8 +521,8 @@ int zidx_index_init(zidx_index* index,
                               ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE);
 }
 
-int zidx_index_init_ex(zidx_index* index,
-                       zidx_stream* comp_stream,
+int zidx_index_init_ex(zidx_index *index,
+                       streamlike_t *comp_stream,
                        zidx_stream_type stream_type,
                        zidx_checksum_option checksum_option,
                        z_stream* z_stream_ptr,
@@ -959,7 +961,7 @@ int zidx_seek_ex(zidx_index* index,
         ZX_LOG("No checkpoint found.\n");
 
         /* Seek to the beginning of file, since no checkpoint has been found. */
-        s_ret = zidx_stream_seek(index->comp_stream, 0, ZX_SEEK_SET);
+        s_ret = sl_seek(index->comp_stream, 0, SL_SEEK_SET);
         if (s_ret < 0) {
             ZX_LOG("ERROR: Couldn't seek in stream (%d).\n", s_ret);
             return ZX_ERR_STREAM_SEEK;
@@ -993,9 +995,9 @@ int zidx_seek_ex(zidx_index* index,
         }
 
         /* Seek to the checkpoint offset in compressed stream. */
-        s_ret = zidx_stream_seek(index->comp_stream,
-                                 checkpoint->offset.comp,
-                                 ZX_SEEK_SET);
+        s_ret = sl_seek(index->comp_stream,
+                        checkpoint->offset.comp,
+                        SL_SEEK_SET);
         if (s_ret != 0) {
             ZX_LOG("ERROR: Couldn't seek in stream (%d).\n", s_ret);
             return ZX_ERR_STREAM_SEEK;
@@ -1524,12 +1526,12 @@ int zidx_fit_index_size(zidx_index* index)
 
 /* TODO: Implement these. */
 int zidx_import_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   const streamlike_t *stream,
                    zidx_import_filter_callback filter,
                    void *filter_context);
 
 int zidx_export_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   const streamlike_t *stream,
                    zidx_export_filter_callback filter,
                    void *filter_context);
 
@@ -1570,14 +1572,14 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_READ_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = zidx_stream_read(input_stream, (uint8_t*)buf, buflen); \
+            s_ret = sl_read(input_stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = zidx_stream_error(input_stream); \
+                s_err = sl_error(input_stream); \
                 if (s_err) { \
                     ZX_LOG("ERROR: Couldn't read " name " (%d).\n", s_err); \
                     ret = s_err; \
                     goto fail; \
-                } else if(zidx_stream_eof(input_stream)) { \
+                } else if(sl_eof(input_stream)) { \
                     ZX_LOG("ERROR: Unexpected end-of-file while reading" name \
                            ".\n"); \
                     ret = ZX_ERR_STREAM_EOF; \
@@ -1602,7 +1604,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
         } while(0)
 
     /* Input stream to read index data. */
-    zidx_stream* input_stream;
+    streamlike_t* input_stream;
 
     /* Temporary index used for shadow index. This is to protect original index
      * from changes in case of a failure. Related parameters of temp_index will
@@ -1650,7 +1652,8 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
         return ZX_ERR_PARAMS;
     }
 
-    input_stream = zidx_stream_from_file(input_index_file);
+    /* FIXME(streamlike) */
+    input_stream = sl_fopen2(input_index_file);
     if (input_stream == NULL) {
         ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
         return ZX_ERR_MEMORY;
@@ -1721,7 +1724,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
      */
 
     ZX_LOG("Completed reading header of imported file at offset %jd.\n",
-           (intmax_t)zidx_stream_tell(input_stream));
+           (intmax_t)sl_tell(input_stream));
 
     /* Allocate space for list. */
     temp_index->list = calloc(temp_index->list_count, sizeof(zidx_checkpoint));
@@ -1825,9 +1828,9 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_WRITE_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = zidx_stream_write(output_stream, (uint8_t*)buf, buflen); \
+            s_ret = sl_write(output_stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = zidx_stream_error(output_stream); \
+                s_err = sl_error(output_stream); \
                 ZX_LOG("ERROR: Couldn't write " name " (%d).\n", s_err); \
                 return s_err; \
             } \
@@ -1845,7 +1848,7 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
         } while(0)
 
     /* Output stream to write index data. */
-    zidx_stream* output_stream;
+    streamlike_t* output_stream;
 
     /* Used for storing return values of stream calls. */
     int s_ret;
@@ -1881,7 +1884,8 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     }
 
     /* Create output stream. */
-    output_stream = zidx_stream_from_file(output_index_file);
+    /* FIXME(streamlike) */
+    output_stream = sl_fopen2(output_index_file);
     if (output_stream == NULL) {
         ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
         return ZX_ERR_MEMORY;
@@ -1936,11 +1940,11 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
      */
 
     ZX_LOG("Completed writing header of imported file at offset %jd.\n",
-           (intmax_t)zidx_stream_tell(output_stream));
+           (intmax_t)sl_tell(output_stream));
 
     /* Compute beginning offset of window data. TODO: Extra space is assumed to
      * be zero. */
-    window_off = zidx_stream_tell(output_stream);
+    window_off = sl_tell(output_stream);
     if (window_off < 0) {
         ZX_LOG("ERROR: Couldn't tell stream offset (%ld).\n", window_off);
         return ZX_ERR_STREAM_SEEK;

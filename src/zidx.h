@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <sys/types.h> // off_t
 
-#include "zidx_stream.h"
+#include <streamlike.h>
 
 #define ZX_DEFAULT_INITIAL_LIST_CAPACITY       (8)
 #define ZX_DEFAULT_WINDOW_SIZE                 (32768)
@@ -42,6 +42,8 @@ typedef struct z_stream_s z_stream;
 #define ZX_ERR_ZLIB(err) (-64 + err)
 #define ZX_ERR_CALLBACK(err) (-16384 + err)
 
+#define ZX_SEEK_SET (0)
+
 /* index/checkpoint data types */
 
 typedef struct zidx_index_s zidx_index;
@@ -73,9 +75,9 @@ int (*zidx_block_callback)(void *context,
 
 zidx_index* zidx_index_create();
 int zidx_index_init(zidx_index* index,
-                    zidx_stream* comp_stream);
+                    streamlike_t* comp_stream);
 int zidx_index_init_ex(zidx_index* index,
-                       zidx_stream* comp_stream,
+                       streamlike_t* comp_stream,
                        zidx_stream_type stream_type,
                        zidx_checksum_option checksum_option,
                        z_stream* z_stream_ptr,
@@ -128,12 +130,12 @@ int (*zidx_export_filter_callback)(void *export_context,
                                    zidx_checkpoint *offset);
 
 int zidx_import_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   const streamlike_t *stream,
                    zidx_import_filter_callback filter,
                    void *filter_context);
 
 int zidx_export_ex(zidx_index *index,
-                   const zidx_stream *stream,
+                   const streamlike_t *stream,
                    zidx_export_filter_callback filter,
                    void *filter_context);
 

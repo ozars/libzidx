@@ -19,7 +19,7 @@
 #endif
 
 FILE *comp_file;
-zidx_stream *comp_stream;
+streamlike_t *comp_stream;
 zidx_index *zx_index;
 uint8_t *uncomp_data;
 
@@ -44,49 +44,6 @@ void unchecked_teardown()
     uncomp_data = NULL;
 }
 
-/* Stream API tests */
-
-void setup_stream_api()
-{
-    int zx_ret;
-    const char *msg;
-
-    comp_stream = malloc(sizeof(zidx_stream));
-    ck_assert_msg(comp_stream, "Couldn't allocate space form zidx compressed "
-                               "stream.");
-
-    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
-                  "Couldn't rewind temporary compressed file.");
-
-    comp_stream = zidx_stream_from_file(comp_file);
-    ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
-}
-
-void teardown_stream_api()
-{
-    FILE *f;
-
-    f = comp_stream->context;
-
-    free(comp_stream);
-    comp_stream = NULL;
-
-    ck_assert_msg(fclose(f) == 0, "File couldn't be closed.");
-}
-
-
-START_TEST(test_comp_file_init)
-{
-    ck_assert(comp_stream->read    == zidx_raw_file_read);
-    ck_assert(comp_stream->write   == zidx_raw_file_write);
-    ck_assert(comp_stream->seek    == zidx_raw_file_seek);
-    ck_assert(comp_stream->tell    == zidx_raw_file_tell);
-    ck_assert(comp_stream->length  == zidx_raw_file_length);
-    ck_assert(comp_stream->eof     == zidx_raw_file_eof);
-    ck_assert(comp_stream->error   == zidx_raw_file_error);
-    ck_assert(comp_stream->context != NULL);
-}
-END_TEST
 
 /* Core tests */
 
@@ -95,7 +52,11 @@ void setup_core()
     const char *msg = NULL;
     int zx_ret;
 
-    setup_stream_api();
+    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
+                  "Couldn't rewind temporary compressed file.");
+
+    comp_stream = sl_fopen2(comp_file);
+    ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 
     zx_index = malloc(sizeof(zidx_index));
     ck_assert_msg(zx_index, "Couldn't allocate space for index.");
@@ -114,7 +75,8 @@ void teardown_core()
     free(zx_index);
     zx_index = NULL;
 
-    teardown_stream_api();
+    ck_assert_msg(sl_fclose(comp_stream) == 0, "Couldn't close streamlike file.");
+    comp_stream = NULL;
 }
 
 START_TEST(test_comp_file_read)
@@ -241,7 +203,7 @@ START_TEST(test_export_import)
 
     FILE *index_file = NULL;
     zidx_index *new_index;
-    zidx_stream *new_stream;
+    streamlike_t *new_stream;
     zidx_checkpoint *new_ckp;
     zidx_checkpoint *old_ckp;
 
@@ -258,7 +220,7 @@ START_TEST(test_export_import)
     new_index = zidx_index_create();
     ck_assert_msg(new_index, "Couldn't create new index.");
 
-    new_stream = zidx_stream_from_file(comp_file);
+    new_stream = sl_fopen2(comp_file);
     ck_assert_msg(new_stream, "Couldn't create new stream.");
 
     zx_ret = zidx_index_init(new_index, new_stream);
@@ -331,18 +293,6 @@ Suite* libzidx_test_suite()
     TCase *tc_core;
 
     s = suite_create("libzidx");
-
-    /* Stream API test cases. */
-    tc_stream_api = tcase_create("Stream API");
-
-    tcase_add_unchecked_fixture(tc_stream_api, unchecked_setup,
-                                unchecked_teardown);
-    tcase_add_checked_fixture(tc_stream_api, setup_stream_api,
-                              teardown_stream_api);
-
-    tcase_add_test(tc_stream_api, test_comp_file_init);
-
-    suite_add_tcase(s, tc_stream_api);
 
     /* Core test cases. */
     tc_core = tcase_create("Core");
