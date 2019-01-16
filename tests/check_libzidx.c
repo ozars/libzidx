@@ -28,12 +28,29 @@ void unchecked_setup()
     uncomp_data = malloc(ZX_TEST_COMP_FILE_LENGTH);
     ck_assert_msg(uncomp_data, "Couldn't allocate space for temporary data.");
 
+    intmax_t comp_size;
+    intmax_t uncomp_size = ZX_TEST_COMP_FILE_LENGTH;
+
     comp_file = get_random_compressed_file(ZX_TEST_RANDOM_SEED,
                                            ZX_TEST_COMP_FILE_LENGTH,
                                            uncomp_data);
 
     ck_assert_msg(comp_file, "Couldn't create temporary compressed file.");
 
+#ifdef ZX_DEBUG
+    ck_assert_msg(fseek(comp_file, 0, SEEK_END) == 0,
+                  "Couldn't seek on temporary compressed file.");
+
+    comp_size = ftell(comp_file);
+    ck_assert_msg(comp_size != -1,
+                  "Couldn't get position in temporary compressed file.");
+
+    ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
+                  "Couldn't seek on temporary compressed file.");
+
+    ZX_LOG("Compressed/uncompressed test file size: %jd/%jd.\n",
+           comp_size, uncomp_size);
+#endif
 }
 
 void unchecked_teardown()
@@ -43,7 +60,6 @@ void unchecked_teardown()
     free(uncomp_data);
     uncomp_data = NULL;
 }
-
 
 /* Core tests */
 
@@ -58,7 +74,7 @@ void setup_core()
     comp_stream = sl_fopen2(comp_file);
     ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
 
-    zx_index = malloc(sizeof(zidx_index));
+    zx_index = zidx_index_create();
     ck_assert_msg(zx_index, "Couldn't allocate space for index.");
 
     zx_ret = zidx_index_init(zx_index, comp_stream);
@@ -87,6 +103,8 @@ START_TEST(test_comp_file_read)
     int file_completed;
     int i;
     long offset;
+
+    ZX_LOG("TEST: Reading compressed file.\n");
 
     offset = 0;
     file_completed = 0;
@@ -136,20 +154,15 @@ int comp_file_seek_callback(void *context,
     return 0;
 }
 
-START_TEST(test_comp_file_seek)
+void make_two_seek_passes_over_file()
 {
     int zx_ret;
     int r_len;
     uint8_t buffer[1024];
-    int file_completed;
     int i;
     long offset;
     long step = 1023;
-    int num_blocks = 0;
     long last_offset;
-
-    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
 
     last_offset = zx_index->offset.uncomp;
 
@@ -187,6 +200,48 @@ START_TEST(test_comp_file_seek)
                               offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
                               buffer[i]);
     } while(r_len != 0);
+
+}
+
+START_TEST(test_comp_file_seek)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.\n");
+
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
+}
+END_TEST
+
+START_TEST(test_comp_file_seek_comp_space)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.\n");
+
+    zx_ret = zidx_build_index(zx_index, 1048576, 0);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
+}
+END_TEST
+
+START_TEST(test_comp_file_seek_uncomp_space)
+{
+    int zx_ret;
+    int num_blocks = 0;
+
+    ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.\n");
+
+    zx_ret = zidx_build_index(zx_index, 1048576, 1);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+
+    make_two_seek_passes_over_file();
 }
 END_TEST
 
@@ -206,6 +261,8 @@ START_TEST(test_export_import)
     streamlike_t *new_stream;
     zidx_checkpoint *new_ckp;
     zidx_checkpoint *old_ckp;
+
+    ZX_LOG("TEST: Importing/exporting index.\n");
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
@@ -234,6 +291,16 @@ START_TEST(test_export_import)
     ck_assert_msg(new_index->list_count == zx_index->list_count,
                   "Couldn't match the number of elements on new (%d) and old (%d) list.",
                   new_index->list_count, zx_index->list_count);
+
+    ck_assert_msg(new_index->compressed_size == zx_index->compressed_size,
+                  "Couldn't match compressed sizes on new (%jd) and old (%jd) list.",
+                  (intmax_t)new_index->compressed_size,
+                  (intmax_t)zx_index->compressed_size);
+
+    ck_assert_msg(new_index->uncompressed_size == zx_index->uncompressed_size,
+                  "Couldn't match uncompressed sizes on new (%jd) and old (%jd) list.",
+                  (intmax_t)new_index->uncompressed_size,
+                  (intmax_t)zx_index->uncompressed_size);
 
     for (i = 0; i < new_index->list_count; i++)
     {
@@ -305,6 +372,8 @@ Suite* libzidx_test_suite()
 
     tcase_add_test(tc_core, test_comp_file_read);
     tcase_add_test(tc_core, test_comp_file_seek);
+    tcase_add_test(tc_core, test_comp_file_seek_comp_space);
+    tcase_add_test(tc_core, test_comp_file_seek_uncomp_space);
     tcase_add_test(tc_core, test_export_import);
 
     suite_add_tcase(s, tc_core);

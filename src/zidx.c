@@ -66,6 +66,8 @@ struct zidx_index_s
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
     char inflate_initialized;
+    off_t compressed_size;
+    off_t uncompressed_size;
 };
 
 /**
@@ -345,7 +347,7 @@ static int read_headers(zidx_index* index,
         if (s_ret != 0) {
             ZX_LOG("WARNING: Callback returned non-zero (%d). "
                    "Returning from function.\n", s_ret);
-            return ZX_ERR_CALLBACK(s_ret);
+            return s_ret;
         }
     }
     return ZX_RET_OK;
@@ -424,7 +426,7 @@ static int read_deflate_blocks(zidx_index* index,
                     if (s_ret != 0) {
                         ZX_LOG("WARNING: Callback returned non-zero (%d). "
                                "Returning from function.\n", s_ret);
-                        return ZX_ERR_CALLBACK(s_ret);
+                        return s_ret;
                     }
                 }
             }
@@ -479,7 +481,7 @@ static int read_gzip_trailer(zidx_index* index)
     memcpy(trailer, zs->next_in, read_bytes);
     zs->next_in  += read_bytes;
     zs->avail_in -= read_bytes;
-    index->offset.uncomp += read_bytes;
+    index->offset.comp += read_bytes;
 
     /* If there are more data to be read for trailer... */
     if (read_bytes < 8) {
@@ -491,7 +493,7 @@ static int read_gzip_trailer(zidx_index* index)
                    " from stream.\n", 8 - read_bytes);
             return ZX_ERR_STREAM_READ;
         }
-        index->offset.uncomp += s_read_len;
+        index->offset.comp += s_read_len;
         if (s_read_len != 8 - read_bytes) {
             ZX_LOG("ERROR: File ended before trailer ends.");
             return ZX_ERR_STREAM_EOF;
@@ -674,6 +676,10 @@ int zidx_index_init_ex(zidx_index *index,
     /* Set checksum option. */
     index->checksum_option = checksum_option;
 
+    /* Set default size. */
+    index->compressed_size = -1;
+    index->uncompressed_size = -1;
+
     ZX_LOG("Initialization was successful.\n");
 
     return ZX_RET_OK;
@@ -698,45 +704,64 @@ int zidx_index_destroy(zidx_index* index)
     zidx_checkpoint *it;
     zidx_checkpoint *end;
 
-    /* If index is NULL, okay is returned (to be consistent with free). */
+    /* If index is NULL, return error. */
     if (!index) {
         ZX_LOG("Nothing is destroyed in index, since it's NULL.\n");
-        return ZX_RET_OK;
+        return ZX_ERR_PARAMS;
     }
-
-    /* Unless an error happens, okay will be returned. */
-    ret = ZX_RET_OK;
 
     /* z_stream should not be NULL. */
     if (!index->z_stream) {
         ZX_LOG("ERROR: index->z_stream is NULL.\n");
-        ret = ZX_ERR_CORRUPTED;
-    } else {
-        /* Release internal buffers of z_stream. */
-        if (index->inflate_initialized) {
-            z_ret = inflateEnd(index->z_stream);
-            if (z_ret != Z_OK) {
-                ZX_LOG("ERROR: inflateEnd returned error (%d).\n", z_ret);
-                ret = ZX_ERR_CORRUPTED;
-            }
-        }
-        free(index->z_stream);
+        return ZX_ERR_CORRUPTED;
     }
 
     /* Checkpoint list should not be NULL if there is some capacity. */
     if (!index->list && index->list_capacity > 0) {
         ZX_LOG("ERROR: index->list is NULL, although capacity is %d.\n",
                index->list_capacity);
-        ret = ZX_ERR_CORRUPTED;
+        return ZX_ERR_CORRUPTED;
+    }
 
-    /* If it's NULL and there is some capacity, free it. */
-    } else if (index->list) {
+    /* Checkpoint list should be NULL if there is no capacity. */
+    if (index->list != NULL && index->list_capacity == 0) {
+        ZX_LOG("ERROR: index->list is not NULL, although capacity is %d.\n",
+               index->list_capacity);
+        return ZX_ERR_CORRUPTED;
+    }
+
+    /* Unless an error happens, okay will be returned. */
+    ret = ZX_RET_OK;
+
+    /* Since z_stream is not NULL, release internal buffers of z_stream. */
+    if (index->inflate_initialized) {
+        z_ret = inflateEnd(index->z_stream);
+        if (z_ret != Z_OK) {
+            ZX_LOG("ERROR: inflateEnd returned error (%d).\n", z_ret);
+            ret = ZX_ERR_ZLIB(z_ret);
+        }
+    }
+    /* If internal buffers are released succesfully, release the z_stream
+     * itself. */
+    if (ret == ZX_RET_OK) {
+        free(index->z_stream);
+        index->z_stream = NULL;
+    }
+
+    /* If index-> list is not NULL, free it. */
+    if (index->list) {
         /* Release window data on each checkpoint. */
         end = index->list + index->list_count;
         for (it = index->list; it < end; it++) {
             free(it->window_data);
         }
         free(index->list);
+
+        /* This members are updated because user can call this function again
+         * if it return error, so we are leaving index list in a valid state. */
+        index->list = NULL;
+        index->list_capacity = 0;
+        index->list_count = 0;
     }
     /* Else is unnecessary, since this practically means capacity is zero and
      * list is NULL. Therefore, nothing to free.  */
@@ -878,6 +903,13 @@ int zidx_read_ex(zidx_index* index,
                 }
             }
             index->stream_state = ZX_STATE_END_OF_FILE;
+
+            /* Assign file sizes. */
+            index->compressed_size = index->offset.comp;
+            index->uncompressed_size = index->offset.uncomp;
+            ZX_LOG("Compressed/uncompressed size: %jd/%jd.\n",
+                   (intmax_t) index->compressed_size,
+                   (intmax_t) index->uncompressed_size);
             break;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
@@ -954,8 +986,8 @@ int zidx_seek_ex(zidx_index* index,
     /* TODO: Implement whence. Currently it is ignored. Implement sanity check
      * for it as well. */
 
-    checkpoint_idx = zidx_get_checkpoint(index, offset);
-    checkpoint = checkpoint_idx >= 0 ? &index->list[checkpoint_idx] : NULL;
+    checkpoint_idx = zidx_get_checkpoint_idx(index, offset);
+    checkpoint = zidx_get_checkpoint(index, checkpoint_idx);
 
     if (checkpoint == NULL) {
         ZX_LOG("No checkpoint found.\n");
@@ -1108,6 +1140,7 @@ typedef struct spacing_data_s
 {
     off_t last_offset;
     off_t spacing_length;
+    char is_uncompressed;
 } spacing_data;
 
 static int spacing_callback(void *context,
@@ -1127,8 +1160,17 @@ static int spacing_callback(void *context,
     /* Casted alias for context. */
     spacing_data* data = context;
 
+    off_t current_offset;
+
+    /* Determine which offsets to use. */
+    if (data->is_uncompressed) {
+        current_offset = offset->uncomp;
+    } else {
+        current_offset = offset->comp;
+    }
+
     /* If spacing_length bytes passed since last saved checkpoint... */
-    if (offset->uncomp >= data->last_offset + data->spacing_length) {
+    if (current_offset >= data->last_offset + data->spacing_length) {
 
         /* Create a new checkpoint. */
         ckp = zidx_create_checkpoint();
@@ -1154,6 +1196,9 @@ static int spacing_callback(void *context,
             ret = zx_ret;
             goto cleanup;
         }
+
+        /* Set last_offset. */
+        data->last_offset = current_offset;
     }
 
     return ZX_RET_OK;
@@ -1166,7 +1211,9 @@ cleanup:
 }
 
 
-int zidx_build_index(zidx_index* index, off_t spacing_length)
+int zidx_build_index(zidx_index* index,
+                     off_t spacing_length,
+                     char is_uncompressed)
 {
     /* Context for spacing_callback. */
     spacing_data data;
@@ -1174,6 +1221,7 @@ int zidx_build_index(zidx_index* index, off_t spacing_length)
     /* Assign last uncompressed offset to 0, and pass spacing_length. */
     data.last_offset = 0;
     data.spacing_length = spacing_length;
+    data.is_uncompressed = is_uncompressed;
 
     return zidx_build_index_ex(index, spacing_callback, &data);
 }
@@ -1353,7 +1401,7 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     return ZX_RET_OK;
 }
 
-int zidx_get_checkpoint(zidx_index* index, off_t offset)
+int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
 {
     /* TODO: Return EOF error if EOF is known and offset is beyond it. */
     /* TODO: Add more logging for returns. I don't feel like doing it today. */
@@ -1436,6 +1484,14 @@ int zidx_get_checkpoint(zidx_index* index, off_t offset)
     return ZX_ERR_NOT_FOUND;
 
     #undef ZX_OFFSET_
+}
+
+zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx)
+{
+    if (idx >= 0 && idx < index->list_count) {
+        return &index->list[idx];
+    }
+    return NULL;
 }
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
@@ -1524,17 +1580,6 @@ int zidx_fit_index_size(zidx_index* index)
                                   index->list_capacity - index->list_count);
 }
 
-/* TODO: Implement these. */
-int zidx_import_ex(zidx_index *index,
-                   const streamlike_t *stream,
-                   zidx_import_filter_callback filter,
-                   void *filter_context);
-
-int zidx_export_ex(zidx_index *index,
-                   const streamlike_t *stream,
-                   zidx_export_filter_callback filter,
-                   void *filter_context);
-
 static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
 {
     int needed_size;
@@ -1567,19 +1612,22 @@ static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
     return ZX_RET_OK;
 }
 
-int zidx_import(zidx_index *index, FILE* input_index_file)
+int zidx_import_ex(zidx_index *index,
+                   streamlike_t *stream,
+                   zidx_import_filter_callback filter,
+                   void *filter_context)
 {
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_READ_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = sl_read(input_stream, (uint8_t*)buf, buflen); \
+            s_ret = sl_read(stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = sl_error(input_stream); \
+                s_err = sl_error(stream); \
                 if (s_err) { \
                     ZX_LOG("ERROR: Couldn't read " name " (%d).\n", s_err); \
                     ret = s_err; \
                     goto fail; \
-                } else if(sl_eof(input_stream)) { \
+                } else if(sl_eof(stream)) { \
                     ZX_LOG("ERROR: Unexpected end-of-file while reading" name \
                            ".\n"); \
                     ret = ZX_ERR_STREAM_EOF; \
@@ -1603,9 +1651,6 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
             } \
         } while(0)
 
-    /* Input stream to read index data. */
-    streamlike_t* input_stream;
-
     /* Temporary index used for shadow index. This is to protect original index
      * from changes in case of a failure. Related parameters of temp_index will
      * be copied to index if everything goes alright. */
@@ -1625,6 +1670,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
     /* Fixed length types. Used for reading fixed-length data to int. */
     int64_t i64;
     int32_t i32;
+    off_t off;
 
     /* General purpose byte buffer. */
     uint8_t buf[8];
@@ -1647,16 +1693,13 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
         ZX_LOG("ERROR: index list is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-    if (input_index_file == NULL) {
-        ZX_LOG("ERROR: Input index file is NULL.\n");
+    if (stream == NULL) {
+        ZX_LOG("ERROR: input stream is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-
-    /* FIXME(streamlike) */
-    input_stream = sl_fopen2(input_index_file);
-    if (input_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
-        return ZX_ERR_MEMORY;
+    if (filter != NULL || filter_context != NULL) {
+        ZX_LOG("ERROR: import filtering not supported.\n");
+        return ZX_ERR_NOT_IMPLEMENTED;
     }
 
     temp_index = calloc(1, sizeof(zidx_index));
@@ -1688,13 +1731,25 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
     /* Read the type of indexed file. */
     ZX_READ_TEMPLATE_(&type_of_file, sizeof(type_of_file), "the type of file");
 
-    /* TODO!!!!!!!!!!!!!!!! HANDLE FILE TYPE. */
+    /* TODO: File type check is not done. Do it. */
 
-    /* Read the length of compressed file. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 8, "the compressed length");
+    /* Read the length of compressed file. */
+    ZX_READ_TEMPLATE_(&i64, 8, "the compressed length");
+    off = i64;
+    if (off != i64) {
+        ZX_LOG("ERROR: Compressed length doesn't fit to offset type.\n");
+        return ZX_ERR_INVALID_OP;
+    }
+    index->compressed_size = off;
 
     /* Read the length of uncompressed file. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 8, "the uncompressed length");
+    ZX_READ_TEMPLATE_(&i64, 8, "the uncompressed length");
+    off = i64;
+    if (off != i64) {
+        ZX_LOG("ERROR: Uncompressed length doesn't fit to offset type.\n");
+        return ZX_ERR_INVALID_OP;
+    }
+    index->uncompressed_size = off;
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 4, "checksum of the index");
@@ -1724,7 +1779,7 @@ int zidx_import(zidx_index *index, FILE* input_index_file)
      */
 
     ZX_LOG("Completed reading header of imported file at offset %jd.\n",
-           (intmax_t)sl_tell(input_stream));
+           (intmax_t)sl_tell(stream));
 
     /* Allocate space for list. */
     temp_index->list = calloc(temp_index->list_count, sizeof(zidx_checkpoint));
@@ -1821,16 +1876,20 @@ fail:
 
     return ret;
     #undef ZX_READ_TEMPLATE_
+
 }
 
-int zidx_export(zidx_index *index, FILE* output_index_file)
+int zidx_export_ex(zidx_index *index,
+                   streamlike_t *stream,
+                   zidx_export_filter_callback filter,
+                   void *filter_context)
 {
     /* Local definition to tidy up cumbersome error check procedures. */
     #define ZX_WRITE_TEMPLATE_(buf, buflen, name) \
         do { \
-            s_ret = sl_write(output_stream, (uint8_t*)buf, buflen); \
+            s_ret = sl_write(stream, (uint8_t*)buf, buflen); \
             if (s_ret < buflen) { \
-                s_err = sl_error(output_stream); \
+                s_err = sl_error(stream); \
                 ZX_LOG("ERROR: Couldn't write " name " (%d).\n", s_err); \
                 return s_err; \
             } \
@@ -1846,9 +1905,6 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
                 ZX_LOG("Exported " name " (hex %02X)\n", ((uint8_t*)buf)[0]); \
             } \
         } while(0)
-
-    /* Output stream to write index data. */
-    streamlike_t* output_stream;
 
     /* Used for storing return values of stream calls. */
     int s_ret;
@@ -1878,17 +1934,13 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
         ZX_LOG("ERROR: index list is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-    if (output_index_file == NULL) {
-        ZX_LOG("ERROR: Output index file is NULL.\n");
+    if (stream == NULL) {
+        ZX_LOG("ERROR: output stream is NULL.\n");
         return ZX_ERR_PARAMS;
     }
-
-    /* Create output stream. */
-    /* FIXME(streamlike) */
-    output_stream = sl_fopen2(output_index_file);
-    if (output_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
-        return ZX_ERR_MEMORY;
+    if (filter != NULL || filter_context != NULL) {
+        ZX_LOG("ERROR: export filtering not supported.\n");
+        return ZX_ERR_NOT_IMPLEMENTED;
     }
 
     /*
@@ -1912,11 +1964,13 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     /* Write the type of indexed file. */
     ZX_WRITE_TEMPLATE_(&type_of_file, sizeof(type_of_file), "the type of file");
 
-    /* Write the length of compressed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 8, "the compressed length");
+    /* Write the length of compressed file. */
+    i64 = index->compressed_size;
+    ZX_WRITE_TEMPLATE_(&i64, 8, "the compressed length");
 
-    /* Write the length of uncompressed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 8, "the uncompressed length");
+    /* Write the length of uncompressed file. */
+    i64 = index->uncompressed_size;
+    ZX_WRITE_TEMPLATE_(&i64, 8, "the uncompressed length");
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");
@@ -1940,11 +1994,11 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
      */
 
     ZX_LOG("Completed writing header of imported file at offset %jd.\n",
-           (intmax_t)sl_tell(output_stream));
+           (intmax_t)sl_tell(stream));
 
     /* Compute beginning offset of window data. TODO: Extra space is assumed to
      * be zero. */
-    window_off = sl_tell(output_stream);
+    window_off = sl_tell(stream);
     if (window_off < 0) {
         ZX_LOG("ERROR: Couldn't tell stream offset (%ld).\n", window_off);
         return ZX_ERR_STREAM_SEEK;
@@ -2000,6 +2054,49 @@ int zidx_export(zidx_index *index, FILE* output_index_file)
     return ZX_RET_OK;
 
     #undef ZX_WRITE_TEMPLATE_
+}
+
+int zidx_import(zidx_index *index, FILE* input_index_file)
+{
+    /* Input stream to read index data. */
+    streamlike_t* input_stream;
+
+    /* Function return value. */
+    int ret;
+
+    input_stream = sl_fopen2(input_index_file);
+    if (input_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for input stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    ret = zidx_import_ex(index, input_stream, NULL, NULL);
+
+    free(input_stream);
+
+    return ret;
+}
+
+int zidx_export(zidx_index *index, FILE* output_index_file)
+
+{
+    /* Input stream to read index data. */
+    streamlike_t* output_stream;
+
+    /* Function return value. */
+    int ret;
+
+    output_stream = sl_fopen2(output_index_file);
+    if (output_stream == NULL) {
+        ZX_LOG("ERROR: Couldn't allocate memory for output stream.\n");
+        return ZX_ERR_MEMORY;
+    }
+
+    ret = zidx_export_ex(index, output_stream, NULL, NULL);
+
+    free(output_stream);
+
+    return ret;
 }
 
 #ifdef __cplusplus
