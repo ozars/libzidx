@@ -70,8 +70,6 @@ extern "C" {
 #define ZX_ERR_NOT_IMPLEMENTED (-10)       /**< Feature is not implemented. */
 #define ZX_ERR_ZLIB(err)       (-64 + err) /**< Error caused by zlib. */
 
-#define ZX_SEEK_SET (0)
-
 /** @} */
 
 /**
@@ -168,10 +166,9 @@ int zidx_read_ex(zidx_index* index,
                  int nbytes,
                  zidx_block_callback block_callback,
                  void *callback_context);
-int zidx_seek(zidx_index* index, off_t offset, int whence);
+int zidx_seek(zidx_index* index, off_t offset);
 int zidx_seek_ex(zidx_index* index,
                  off_t offset,
-                 int whence,
                  zidx_block_callback block_callback,
                  void *callback_context);
 off_t zidx_tell(zidx_index* index);

@@ -932,14 +932,13 @@ int zidx_read_ex(zidx_index* index,
     return zs->next_out - buffer;
 }
 
-int zidx_seek(zidx_index* index, off_t offset, int whence)
+int zidx_seek(zidx_index* index, off_t offset)
 {
-    return zidx_seek_ex(index, offset, whence, NULL, NULL);
+    return zidx_seek_ex(index, offset, NULL, NULL);
 }
 
 int zidx_seek_ex(zidx_index* index,
                  off_t offset,
-                 int whence,
                  zidx_block_callback block_callback,
                  void *callback_context)
 {
@@ -982,9 +981,6 @@ int zidx_seek_ex(zidx_index* index,
         ZX_LOG("ERROR: offset (%jd) is negative.\n", (intmax_t)offset);
         return ZX_ERR_PARAMS;
     }
-
-    /* TODO: Implement whence. Currently it is ignored. Implement sanity check
-     * for it as well. */
 
     checkpoint_idx = zidx_get_checkpoint_idx(index, offset);
     checkpoint = zidx_get_checkpoint(index, checkpoint_idx);

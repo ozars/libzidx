@@ -168,8 +168,9 @@ void make_two_seek_passes_over_file()
 
     offset = last_offset - step;
     while (offset > 0) {
-        zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
-        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
+        zx_ret = zidx_seek(zx_index, offset);
+        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld",
+                                   zx_ret, offset);
 
         r_len = zidx_read(zx_index, buffer, sizeof(buffer));
         ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
@@ -186,7 +187,7 @@ void make_two_seek_passes_over_file()
     do {
         offset = zidx_tell(zx_index) + step;
 
-        zx_ret = zidx_seek(zx_index, offset, ZX_SEEK_SET);
+        zx_ret = zidx_seek(zx_index, offset);
         ck_assert_msg(zx_ret == 0 ||
                       (offset >= last_offset && zx_ret == ZX_ERR_STREAM_EOF),
                       "Seek returned %d at offset %ld", zx_ret, offset);
@@ -336,8 +337,9 @@ START_TEST(test_export_import)
 
     offset = zx_index->offset.uncomp - step;
     while (offset > 0) {
-        zx_ret = zidx_seek(new_index, offset, ZX_SEEK_SET);
-        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld", zx_ret, offset);
+        zx_ret = zidx_seek(new_index, offset);
+        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld",
+                                   zx_ret, offset);
 
         r_len = zidx_read(new_index, buffer, sizeof(buffer));
         ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
