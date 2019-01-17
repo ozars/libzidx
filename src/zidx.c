@@ -1135,7 +1135,10 @@ off_t zidx_tell(zidx_index* index)
     return index->offset.uncomp;
 }
 
-int zidx_rewind(zidx_index* index);
+int zidx_rewind(zidx_index* index)
+{
+    return zidx_seek(index, 0);
+}
 
 typedef struct spacing_data_s
 {
