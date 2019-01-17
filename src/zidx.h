@@ -30,7 +30,7 @@ extern "C" {
 #define ZX_DEFAULT_WINDOW_SIZE (32768)
 
 /** Default value for size of the buffer used for decompression. */
-#define ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
+#define ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (32768)
 
 /**
  * Default value for the size of buffer for discarding unused data while
