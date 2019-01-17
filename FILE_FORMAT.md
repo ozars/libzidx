@@ -1,11 +1,11 @@
 # zidx File Format
 *Version: 1.0*
 
-This document describes file format used for importing and exporting indexes for
-compressed GZIP, ZLIB or DEFLATE data.
+This document describes file format used for importing and exporting indexes
+for compressed GZIP, ZLIB or DEFLATE data.
 
-Conventionally, *.zx* or *.zidx* file extensions are used for storing checkpoint
-indexing data created by zidx library.
+Conventionally, *.zx* or *.zidx* file extensions are used for storing
+checkpoint indexing data created by zidx library.
 
 Byte order is little-endian for all fields by default.
 
@@ -43,6 +43,6 @@ implemented in the future.
     - 1 byte: Number of bits used from next compressed byte on block boundary
     - 1 byte: Compressed byte on block boundary if there is one, else zero
     - 4 bytes: Length of the window
-    - 4 bytes: Checksum of the uncompressed data upto checkpoint offset. Zero if
-    no checksum is used.
+    - 4 bytes: Checksum of the uncompressed data upto checkpoint offset. Zero
+    if no checksum is used.
 

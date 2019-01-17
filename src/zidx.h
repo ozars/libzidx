@@ -33,8 +33,8 @@ extern "C" {
 #define ZX_DEFAULT_COMPRESSED_DATA_BUFFER_SIZE (16384)
 
 /**
- * Default value for the size of buffer for discarding unused data while seeking
- * to an offset inside a compressed block.
+ * Default value for the size of buffer for discarding unused data while
+ * seeking to an offset inside a compressed block.
  */
 #define ZX_DEFAULT_SEEKING_DATA_BUFFER_SIZE (32768)
 
@@ -47,8 +47,8 @@ extern "C" {
  *
  * All error codes must be negative. Users can get return value of callback
  * functions, however it's users responsibility to avoid conflicting return
- * values in callbacks. Users are encouraged to leave return values in the range
- * of -1 to -256 library use.
+ * values in callbacks. Users are encouraged to leave return values in the
+ * range of -1 to -256 library use.
  *
  * Errors caused by zlib library will be returned by passing through
  * ZX_ERR_ZLIB() macro, so user can use this macro to check for errors.
@@ -80,7 +80,7 @@ extern "C" {
  */
 
 #ifndef ZLIB_H
-/** Opaque declaration of z_stream from `zlib.h`, if not declared already. */
+/** Opaque declaration of z_stream, if not declared by zlib header already. */
 typedef struct z_stream_s z_stream;
 #endif
 

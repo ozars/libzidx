@@ -72,7 +72,8 @@ void setup_core()
                   "Couldn't rewind temporary compressed file.");
 
     comp_stream = sl_fopen2(comp_file);
-    ck_assert_msg(comp_stream != NULL, "Couldn't initialize zidx file stream.");
+    ck_assert_msg(comp_stream != NULL,
+                  "Couldn't initialize zidx file stream.");
 
     zx_index = zidx_index_create();
     ck_assert_msg(zx_index, "Couldn't allocate space for index.");
@@ -91,7 +92,8 @@ void teardown_core()
     free(zx_index);
     zx_index = NULL;
 
-    ck_assert_msg(sl_fclose(comp_stream) == 0, "Couldn't close streamlike file.");
+    ck_assert_msg(sl_fclose(comp_stream) == 0,
+                  "Couldn't close streamlike file.");
     comp_stream = NULL;
 }
 
@@ -173,13 +175,14 @@ void make_two_seek_passes_over_file()
                                    zx_ret, offset);
 
         r_len = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld",
+                                  zx_ret, offset);
 
         ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
                               "Incorrect data at offset %ld, "
                               "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
-                              buffer[i]);
+                              offset, uncomp_data[offset], uncomp_data[offset],
+                              buffer[0], buffer[i]);
 
         offset -= step;
     }
@@ -193,13 +196,14 @@ void make_two_seek_passes_over_file()
                       "Seek returned %d at offset %ld", zx_ret, offset);
 
         r_len = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld",
+                                  zx_ret, offset);
 
         ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
                               "Incorrect data at offset %ld, "
                               "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
-                              buffer[i]);
+                              offset, uncomp_data[offset], uncomp_data[offset],
+                              buffer[0], buffer[i]);
     } while(r_len != 0);
 
 }
@@ -211,8 +215,10 @@ START_TEST(test_comp_file_seek)
 
     ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.\n");
 
-    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback,
+                                 &num_blocks);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
+                                       zx_ret);
 
     make_two_seek_passes_over_file();
 }
@@ -226,7 +232,8 @@ START_TEST(test_comp_file_seek_comp_space)
     ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.\n");
 
     zx_ret = zidx_build_index(zx_index, 1048576, 0);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
+                                       zx_ret);
 
     make_two_seek_passes_over_file();
 }
@@ -240,7 +247,8 @@ START_TEST(test_comp_file_seek_uncomp_space)
     ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.\n");
 
     zx_ret = zidx_build_index(zx_index, 1048576, 1);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).", zx_ret);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
+                                       zx_ret);
 
     make_two_seek_passes_over_file();
 }
@@ -265,11 +273,13 @@ START_TEST(test_export_import)
 
     ZX_LOG("TEST: Importing/exporting index.\n");
 
-    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, &num_blocks);
+    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback,
+                                 &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
                   zx_ret);
 
-    index_file = fopen("index_file.tmp", "wb+"); /* TODO: Use tmpfile instead. */
+    /* TODO: Use tmpfile instead. */
+    index_file = fopen("index_file.tmp", "wb+");
     ck_assert_msg(index_file, "Couldn't open index file.");
 
     zx_ret = zidx_export(zx_index, index_file);
@@ -282,25 +292,29 @@ START_TEST(test_export_import)
     ck_assert_msg(new_stream, "Couldn't create new stream.");
 
     zx_ret = zidx_index_init(new_index, new_stream);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't initialize index (%d).", zx_ret);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't initialize index (%d).",
+                                       zx_ret);
 
-    ck_assert_msg(fseek(index_file, 0, SEEK_SET) == 0, "Couldn't rewind file.", zx_ret);
+    ck_assert_msg(fseek(index_file, 0, SEEK_SET) == 0,
+                  "Couldn't rewind file.");
+
 
     zx_ret = zidx_import(new_index, index_file);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).", zx_ret);
+    ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).",
+                                       zx_ret);
 
     ck_assert_msg(new_index->list_count == zx_index->list_count,
-                  "Couldn't match the number of elements on new (%d) and old (%d) list.",
-                  new_index->list_count, zx_index->list_count);
+                  "Couldn't match the number of elements on new (%d) and old "
+                  "(%d) list.", new_index->list_count, zx_index->list_count);
 
     ck_assert_msg(new_index->compressed_size == zx_index->compressed_size,
-                  "Couldn't match compressed sizes on new (%jd) and old (%jd) list.",
-                  (intmax_t)new_index->compressed_size,
+                  "Couldn't match compressed sizes on new (%jd) and old (%jd) "
+                  "list.", (intmax_t)new_index->compressed_size,
                   (intmax_t)zx_index->compressed_size);
 
     ck_assert_msg(new_index->uncompressed_size == zx_index->uncompressed_size,
-                  "Couldn't match uncompressed sizes on new (%jd) and old (%jd) list.",
-                  (intmax_t)new_index->uncompressed_size,
+                  "Couldn't match uncompressed sizes on new (%jd) and old "
+                  "(%jd) list.", (intmax_t)new_index->uncompressed_size,
                   (intmax_t)zx_index->uncompressed_size);
 
     for (i = 0; i < new_index->list_count; i++)
@@ -311,14 +325,17 @@ START_TEST(test_export_import)
                       "Couldn't match window lengths at checkpoint %d.", i);
 
         ck_assert_msg(new_ckp->offset.comp == old_ckp->offset.comp,
-                      "Couldn't match compressed offsets at checkpoint %d.", i);
+                      "Couldn't match compressed offsets at checkpoint %d.",
+                      i);
 
         ck_assert_msg(new_ckp->offset.uncomp == old_ckp->offset.uncomp,
-                      "Couldn't match uncompressed offsets at checkpoint %d.", i);
+                      "Couldn't match uncompressed offsets at checkpoint %d.",
+                      i);
 
         ck_assert_msg(new_ckp->offset.comp_bits_count
                             == old_ckp->offset.comp_bits_count,
-                      "Couldn't match boundary bits count at checkpoint %d.", i);
+                      "Couldn't match boundary bits count at checkpoint %d.",
+                      i);
 
         ck_assert_msg(new_ckp->offset.comp_byte == old_ckp->offset.comp_byte,
                       "Couldn't match boundary byte at checkpoint %d.", i);
@@ -342,13 +359,14 @@ START_TEST(test_export_import)
                                    zx_ret, offset);
 
         r_len = zidx_read(new_index, buffer, sizeof(buffer));
-        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", zx_ret, offset);
+        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld",
+                                  zx_ret, offset);
 
         ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
                               "Incorrect data at offset %ld, "
                               "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, uncomp_data[offset], uncomp_data[offset], buffer[0],
-                              buffer[i]);
+                              offset, uncomp_data[offset], uncomp_data[offset],
+                              buffer[0], buffer[i]);
 
         offset -= step;
     }
