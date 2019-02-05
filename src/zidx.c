@@ -4,7 +4,6 @@
 #include <string.h>
 #include <zlib.h>
 #include <streamlike.h>
-#include <streamlike/file.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -2069,47 +2068,15 @@ int zidx_export_ex(zidx_index *index,
     #undef ZX_WRITE_TEMPLATE_
 }
 
-int zidx_import(zidx_index *index, FILE* input_index_file)
+int zidx_import(zidx_index *index, streamlike_t *stream)
 {
-    /* Input stream to read index data. */
-    streamlike_t* input_stream;
-
-    /* Function return value. */
-    int ret;
-
-    input_stream = sl_fopen2(input_index_file);
-    if (input_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for input stream.");
-        return ZX_ERR_MEMORY;
-    }
-
-    ret = zidx_import_ex(index, input_stream, NULL, NULL);
-
-    free(input_stream);
-
-    return ret;
+    return zidx_import_ex(index, stream, NULL, NULL);
 }
 
-int zidx_export(zidx_index *index, FILE* output_index_file)
+int zidx_export(zidx_index *index, streamlike_t *stream)
 
 {
-    /* Input stream to read index data. */
-    streamlike_t* output_stream;
-
-    /* Function return value. */
-    int ret;
-
-    output_stream = sl_fopen2(output_index_file);
-    if (output_stream == NULL) {
-        ZX_LOG("ERROR: Couldn't allocate memory for output stream.");
-        return ZX_ERR_MEMORY;
-    }
-
-    ret = zidx_export_ex(index, output_stream, NULL, NULL);
-
-    free(output_stream);
-
-    return ret;
+    return zidx_export_ex(index, stream, NULL, NULL);
 }
 
 #ifdef __cplusplus

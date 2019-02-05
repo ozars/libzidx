@@ -215,8 +215,8 @@ int zidx_export_ex(zidx_index *index,
                    zidx_export_filter_callback filter,
                    void *filter_context);
 
-int zidx_import(zidx_index *index, FILE* input_index_file);
-int zidx_export(zidx_index *index, FILE* output_index_file);
+int zidx_import(zidx_index *index, streamlike_t *stream);
+int zidx_export(zidx_index *index, streamlike_t* output_index_file);
 
 #ifdef __cplusplus
 } // extern "C"

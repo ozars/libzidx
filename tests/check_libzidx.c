@@ -2,6 +2,8 @@
 #include<stdlib.h>
 
 #include<check.h>
+#include<streamlike.h>
+#include<streamlike/file.h>
 
 #include "utils.h"
 #include "zidx.c"
@@ -265,24 +267,24 @@ START_TEST(test_export_import)
     long step = 1024;
     int num_blocks = 0;
 
-    FILE *index_file = NULL;
+    streamlike_t *index_stream = NULL;
     zidx_index *new_index;
     streamlike_t *new_stream;
     zidx_checkpoint *new_ckp;
     zidx_checkpoint *old_ckp;
 
-    ZX_LOG("TEST: Importing/exporting index.\n");
+    ZX_LOG("TEST: Importing/exporting index.");
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback,
                                  &num_blocks);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
                   zx_ret);
 
-    /* TODO: Use tmpfile instead. */
-    index_file = fopen("index_file.tmp", "wb+");
-    ck_assert_msg(index_file, "Couldn't open index file.");
+    /* TODO: Use tmpnam instead. */
+    index_stream = sl_fopen("index_file.tmp", "wb+");
+    ck_assert_msg(index_stream, "Couldn't open index file.");
 
-    zx_ret = zidx_export(zx_index, index_file);
+    zx_ret = zidx_export(zx_index, index_stream);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't export index (%d).", zx_ret);
 
     new_index = zidx_index_create();
@@ -295,11 +297,10 @@ START_TEST(test_export_import)
     ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't initialize index (%d).",
                                        zx_ret);
 
-    ck_assert_msg(fseek(index_file, 0, SEEK_SET) == 0,
+    ck_assert_msg(sl_seek(index_stream, 0, SL_SEEK_SET) == 0,
                   "Couldn't rewind file.");
 
-
-    zx_ret = zidx_import(new_index, index_file);
+    zx_ret = zidx_import(new_index, index_stream);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Couldn't import from file (%d).",
                                        zx_ret);
 
