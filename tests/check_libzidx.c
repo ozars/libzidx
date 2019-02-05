@@ -50,7 +50,7 @@ void unchecked_setup()
     ck_assert_msg(fseek(comp_file, 0, SEEK_SET) == 0,
                   "Couldn't seek on temporary compressed file.");
 
-    ZX_LOG("Compressed/uncompressed test file size: %jd/%jd.\n",
+    ZX_LOG("Compressed/uncompressed test file size: %jd/%jd.",
            comp_size, uncomp_size);
 #endif
 }
@@ -108,7 +108,7 @@ START_TEST(test_comp_file_read)
     int i;
     long offset;
 
-    ZX_LOG("TEST: Reading compressed file.\n");
+    ZX_LOG("TEST: Reading compressed file.");
 
     offset = 0;
     file_completed = 0;
@@ -215,7 +215,7 @@ START_TEST(test_comp_file_seek)
     int zx_ret;
     int num_blocks = 0;
 
-    ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.\n");
+    ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.");
 
     zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback,
                                  &num_blocks);
@@ -231,7 +231,7 @@ START_TEST(test_comp_file_seek_comp_space)
     int zx_ret;
     int num_blocks = 0;
 
-    ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.\n");
+    ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.");
 
     zx_ret = zidx_build_index(zx_index, 1048576, 0);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
@@ -246,7 +246,7 @@ START_TEST(test_comp_file_seek_uncomp_space)
     int zx_ret;
     int num_blocks = 0;
 
-    ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.\n");
+    ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.");
 
     zx_ret = zidx_build_index(zx_index, 1048576, 1);
     ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
