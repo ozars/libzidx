@@ -772,14 +772,14 @@ int zidx_index_destroy(zidx_index* index)
     return ret;
 }
 
-int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes)
+int zidx_read(zidx_index* index, void *buffer, int nbytes)
 {
     /* Pass to explicit version without block callbacks. */
     return zidx_read_ex(index, buffer, nbytes, NULL, NULL);
 }
 
 int zidx_read_ex(zidx_index* index,
-                 uint8_t *buffer,
+                 void *buffer,
                  int nbytes,
                  zidx_block_callback block_callback,
                  void *callback_context)
@@ -929,10 +929,10 @@ int zidx_read_ex(zidx_index* index,
 
     } /* end of switch(index->stream_state) */
 
-    ZX_LOG("Read %jd bytes.", (intmax_t)(zs->next_out - buffer));
+    ZX_LOG("Read %jd bytes.", (intmax_t)(zs->next_out - (uint8_t*)buffer));
 
     /* Return number of bytes read into the buffer. */
-    return zs->next_out - buffer;
+    return zs->next_out - (uint8_t*)buffer;
 }
 
 int zidx_seek(zidx_index* index, off_t offset)

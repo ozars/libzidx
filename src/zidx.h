@@ -160,9 +160,9 @@ int zidx_index_init_ex(zidx_index* index,
                        int comp_data_buffer_size,
                        int seeking_data_buffer_size);
 int zidx_index_destroy(zidx_index* index);
-int zidx_read(zidx_index* index, uint8_t *buffer, int nbytes);
+int zidx_read(zidx_index* index, void *buffer, int nbytes);
 int zidx_read_ex(zidx_index* index,
-                 uint8_t *buffer,
+                 void *buffer,
                  int nbytes,
                  zidx_block_callback block_callback,
                  void *callback_context);
