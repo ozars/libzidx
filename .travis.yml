@@ -1,4 +1,5 @@
 language: C
+dist: xenial
 env:
     global:
         - TEST_EXT_DIR=test_ext

@@ -18,13 +18,14 @@ esac
 
 # Install build tools
 sudo apt-get update
-sudo apt-get install -y autoconf texinfo
+sudo apt-get install -y autoconf texinfo pkg-config
 
 # Clone libraries needed for test if they are not cached
 mkdir "$TEST_EXT_DIR" || true
 cd "$TEST_EXT_DIR"
 git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
 git clone https://github.com/ozars/pcg-c
+git clone git@github.com:ozars/libstreamlike.git
 
 # Install check
 cd "$TEST_EXT_DIR/check"
@@ -35,6 +36,13 @@ sudo make install
 
 # Install psuedo-random lib
 cd "$TEST_EXT_DIR/pcg-c"
+make
+sudo make install
+
+# Install libstreamlike
+cd "$TEST_EXT_DIR/libstreamlike"
+autoreconf -vfi
+./configure
 make
 sudo make install
 

@@ -37,7 +37,7 @@ flags = [
     '-x',
     'c',
     '-DZIDX_DEBUG',
-    '-std=c11',
+    '-std=gnu11',
 ]
 
 
