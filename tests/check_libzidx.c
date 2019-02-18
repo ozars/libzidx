@@ -7,6 +7,7 @@
 
 #include "utils.h"
 #include "zidx.c"
+#include "zidx_streamlike.h"
 
 #ifndef ZX_TEST_RANDOM_SEED
 #define ZX_TEST_RANDOM_SEED (0UL)
@@ -22,6 +23,7 @@
 
 FILE *comp_file;
 streamlike_t *comp_stream;
+streamlike_t *zx_stream;
 zidx_index *zx_index;
 uint8_t *uncomp_data;
 
@@ -74,14 +76,16 @@ void setup_core()
                   "Couldn't rewind temporary compressed file.");
 
     comp_stream = sl_fopen2(comp_file);
-    ck_assert_msg(comp_stream != NULL,
-                  "Couldn't initialize zidx file stream.");
+    ck_assert_msg(comp_stream, "Couldn't initialize zidx file stream.");
 
     zx_index = zidx_index_create();
     ck_assert_msg(zx_index, "Couldn't allocate space for index.");
 
     zx_ret = zidx_index_init(zx_index, comp_stream);
     ck_assert_msg(zx_ret == 0, "Couldn't initialize zidx index.");
+
+    zx_stream = sl_zx_open(zx_index);
+    ck_assert_msg(zx_stream, "Couldn't initialize zidx streamlike object.");
 }
 
 void teardown_core()
@@ -97,40 +101,54 @@ void teardown_core()
     ck_assert_msg(sl_fclose(comp_stream) == 0,
                   "Couldn't close streamlike file.");
     comp_stream = NULL;
+
+    sl_zx_close(zx_stream);
+    zx_stream = NULL;
 }
+
+#define template_comp_file_read(readf, context) \
+    do { \
+        int zx_ret; \
+        uint8_t buffer[1024]; \
+        uint8_t next_byte; \
+        int file_completed; \
+        int i; \
+        long offset; \
+        \
+        ZX_LOG("TEST: Reading compressed file."); \
+        \
+        offset = 0; \
+        file_completed = 0; \
+        while (!file_completed) { \
+            zx_ret = readf(context, buffer, sizeof(buffer)); \
+            ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret); \
+            \
+            if (zx_ret == 0) { \
+                file_completed = 1; \
+            } else { \
+                for(i = 0; i < zx_ret; i++) \
+                { \
+                    next_byte = uncomp_data[offset]; \
+                    ck_assert_msg(buffer[i] == next_byte, \
+                                "Incorrect data at offset %ld, " \
+                                "expected %u (0x%02X), got %u (0x%02X).", \
+                                offset, next_byte, next_byte, buffer[i], \
+                                buffer[i]); \
+                    offset++; \
+                } \
+            } \
+        } \
+    } while(0)
 
 START_TEST(test_comp_file_read)
 {
-    int zx_ret;
-    uint8_t buffer[1024];
-    uint8_t next_byte;
-    int file_completed;
-    int i;
-    long offset;
+    template_comp_file_read(zidx_read, zx_index);
+}
+END_TEST
 
-    ZX_LOG("TEST: Reading compressed file.");
-
-    offset = 0;
-    file_completed = 0;
-    while (!file_completed) {
-        zx_ret = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(zx_ret >= 0, "Error while reading file: %d.", zx_ret);
-
-        if (zx_ret == 0) {
-            file_completed = 1;
-        } else {
-            for(i = 0; i < zx_ret; i++)
-            {
-                next_byte = uncomp_data[offset];
-                ck_assert_msg(buffer[i] == next_byte,
-                              "Incorrect data at offset %ld, "
-                              "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, next_byte, next_byte, buffer[i],
-                              buffer[i]);
-                offset++;
-            }
-        }
-    }
+START_TEST(test_comp_file_sl_read)
+{
+    template_comp_file_read(sl_read, zx_stream);
 }
 END_TEST
 
@@ -158,101 +176,144 @@ int comp_file_seek_callback(void *context,
     return 0;
 }
 
-void make_two_seek_passes_over_file()
+static
+int sl_seek_wrapper(streamlike_t *stream, off_t offset)
 {
-    int zx_ret;
-    int r_len;
-    uint8_t buffer[1024];
-    int i;
-    long offset;
-    long step = 1023;
-    long last_offset;
-
-    last_offset = zx_index->offset.uncomp;
-
-    offset = last_offset - step;
-    while (offset > 0) {
-        zx_ret = zidx_seek(zx_index, offset);
-        ck_assert_msg(zx_ret == 0, "Seek returned %d at offset %ld",
-                                   zx_ret, offset);
-
-        r_len = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld",
-                                  zx_ret, offset);
-
-        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
-                              "Incorrect data at offset %ld, "
-                              "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, uncomp_data[offset], uncomp_data[offset],
-                              buffer[0], buffer[i]);
-
-        offset -= step;
-    }
-
-    do {
-        offset = zidx_tell(zx_index) + step;
-
-        zx_ret = zidx_seek(zx_index, offset);
-        ck_assert_msg(zx_ret == 0 ||
-                      (offset >= last_offset && zx_ret == ZX_ERR_STREAM_EOF),
-                      "Seek returned %d at offset %ld", zx_ret, offset);
-
-        r_len = zidx_read(zx_index, buffer, sizeof(buffer));
-        ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld",
-                                  zx_ret, offset);
-
-        ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0,
-                              "Incorrect data at offset %ld, "
-                              "expected %u (0x%02X), got %u (0x%02X).",
-                              offset, uncomp_data[offset], uncomp_data[offset],
-                              buffer[0], buffer[i]);
-    } while(r_len != 0);
-
+    return sl_seek(stream, offset, SL_SEEK_SET);
 }
+
+#define template_two_seek_passes_over_file(readf, seekf, tellf, context) \
+    do { \
+        int ret; \
+        int r_len; \
+        uint8_t buffer[1024]; \
+        int i; \
+        long offset; \
+        long step = 1023; \
+        long last_offset; \
+        \
+        last_offset = zx_index->offset.uncomp; \
+        \
+        offset = last_offset - step; \
+        while (offset > 0) { \
+            ret = seekf(context, offset); \
+            ck_assert_msg(ret == 0, "Seek returned %d at offset %ld", \
+                                    ret, offset); \
+            \
+            r_len = readf(context, buffer, sizeof(buffer)); \
+            ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", \
+                                    r_len, offset); \
+            \
+            ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0, \
+                                "Incorrect data at offset %ld, " \
+                                "expected %u (0x%02X), got %u (0x%02X).", \
+                                offset, uncomp_data[offset], \
+                                uncomp_data[offset], buffer[0], buffer[i]); \
+            \
+            offset -= step; \
+        } \
+        \
+        do { \
+            offset = tellf(context) + step; \
+            \
+            ret = seekf(context, offset); \
+            ck_assert_msg(ret == 0 || \
+                        (offset >= last_offset && ret == ZX_ERR_STREAM_EOF), \
+                        "Seek returned %d at offset %ld", ret, offset); \
+            \
+            r_len = readf(context, buffer, sizeof(buffer)); \
+            ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", \
+                                    ret, offset); \
+            \
+            ck_assert_msg(memcmp(buffer, uncomp_data + offset, r_len) == 0, \
+                                "Incorrect data at offset %ld, " \
+                                "expected %u (0x%02X), got %u (0x%02X).", \
+                                offset, uncomp_data[offset], \
+                                uncomp_data[offset], buffer[0], buffer[i]); \
+        } while(r_len != 0); \
+    } while(0)
+
+#define template_comp_file_seek(readf, seekf, tellf, context) \
+    do { \
+        int ret; \
+        int num_blocks = 0; \
+        \
+        ZX_LOG("TEST: Seeking compressed file with all possbile " \
+               "checkpoints."); \
+        \
+        ret = zidx_build_index_ex(zx_index, comp_file_seek_callback, \
+                                  &num_blocks); \
+        ck_assert_msg(ret == ZX_RET_OK, "Error while building index (%d).", \
+                                        ret); \
+        \
+        template_two_seek_passes_over_file(readf, seekf, tellf, context); \
+    } while(0)
 
 START_TEST(test_comp_file_seek)
 {
-    int zx_ret;
-    int num_blocks = 0;
-
-    ZX_LOG("TEST: Seeking compressed file with all possbile checkpoints.");
-
-    zx_ret = zidx_build_index_ex(zx_index, comp_file_seek_callback,
-                                 &num_blocks);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
-                                       zx_ret);
-
-    make_two_seek_passes_over_file();
+    template_comp_file_seek(zidx_read, zidx_seek, zidx_tell, zx_index);
 }
 END_TEST
+
+START_TEST(test_comp_file_sl_seek)
+{
+    template_comp_file_seek(sl_read, sl_seek_wrapper, sl_tell, zx_stream);
+}
+END_TEST
+
+#define template_comp_file_seek_comp_space(readf, seekf, tellf, context) \
+    do { \
+        int ret; \
+        int num_blocks = 0; \
+        \
+        ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces."); \
+        \
+        ret = zidx_build_index(zx_index, 1048576, 0); \
+        ck_assert_msg(ret == ZX_RET_OK, "Error while building index (%d).", \
+                                        ret); \
+        \
+        template_two_seek_passes_over_file(readf, seekf, tellf, context); \
+    } while(0)
 
 START_TEST(test_comp_file_seek_comp_space)
 {
-    int zx_ret;
-    int num_blocks = 0;
-
-    ZX_LOG("TEST: Seeking compressed file with 1MB compressed spaces.");
-
-    zx_ret = zidx_build_index(zx_index, 1048576, 0);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
-                                       zx_ret);
-
-    make_two_seek_passes_over_file();
+    template_comp_file_seek_comp_space(zidx_read, zidx_seek, zidx_tell,
+                                       zx_index);
 }
 END_TEST
 
+START_TEST(test_comp_file_sl_seek_comp_space)
+{
+    template_comp_file_seek_comp_space(sl_read, sl_seek_wrapper, sl_tell,
+                                       zx_stream);
+}
+END_TEST
+
+#define template_comp_file_seek_uncomp_space(readf, seekf, tellf, context) \
+    do { \
+        int ret; \
+        int num_blocks = 0; \
+        \
+        ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces."); \
+        \
+        ret = zidx_build_index(zx_index, 1048576, 1); \
+        ck_assert_msg(ret == ZX_RET_OK, "Error while building index (%d).", \
+                                        ret); \
+        \
+        template_two_seek_passes_over_file(readf, seekf, tellf, context); \
+    } while(0)
+
 START_TEST(test_comp_file_seek_uncomp_space)
 {
-    int zx_ret;
-    int num_blocks = 0;
+    template_comp_file_seek_uncomp_space(zidx_read, zidx_seek, zidx_tell,
+                                         zx_index);
+}
+END_TEST
 
-    ZX_LOG("TEST: Seeking compressed file with 1MB uncompressed spaces.");
-
-    zx_ret = zidx_build_index(zx_index, 1048576, 1);
-    ck_assert_msg(zx_ret == ZX_RET_OK, "Error while building index (%d).",
-                                       zx_ret);
-
-    make_two_seek_passes_over_file();
+START_TEST(test_comp_file_sl_seek_uncomp_space)
+{
+    template_comp_file_seek_uncomp_space(sl_read, sl_seek_wrapper, sl_tell,
+                                         zx_stream);
 }
 END_TEST
 
@@ -392,9 +453,13 @@ Suite* libzidx_test_suite()
     tcase_add_checked_fixture(tc_core, setup_core, teardown_core);
 
     tcase_add_test(tc_core, test_comp_file_read);
+    tcase_add_test(tc_core, test_comp_file_sl_read);
     tcase_add_test(tc_core, test_comp_file_seek);
+    tcase_add_test(tc_core, test_comp_file_sl_seek);
     tcase_add_test(tc_core, test_comp_file_seek_comp_space);
+    tcase_add_test(tc_core, test_comp_file_sl_seek_comp_space);
     tcase_add_test(tc_core, test_comp_file_seek_uncomp_space);
+    tcase_add_test(tc_core, test_comp_file_sl_seek_uncomp_space);
     tcase_add_test(tc_core, test_export_import);
 
     suite_add_tcase(s, tc_core);

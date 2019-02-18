@@ -173,6 +173,9 @@ int zidx_seek_ex(zidx_index* index,
                  void *callback_context);
 off_t zidx_tell(zidx_index* index);
 int zidx_rewind(zidx_index* index);
+int zidx_eof(zidx_index* index);
+int zidx_error(zidx_index* index);
+int zidx_uncomp_size(zidx_index* index);
 
 int zidx_build_index(zidx_index* index,
                      off_t spacing_length,
@@ -188,6 +191,11 @@ int zidx_fill_checkpoint(zidx_index* index,
 int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint);
 int zidx_get_checkpoint_idx(zidx_index* index, off_t offset);
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx);
+int zidx_checkpoint_count(zidx_index* index);
+/* TODO: Consider dropping consts before release. */
+off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
+size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
+                                  const void** result);
 
 int zidx_extend_index_size(zidx_index* index, int nmembers);
 int zidx_shrink_index_size(zidx_index* index, int nmembers);

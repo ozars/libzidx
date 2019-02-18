@@ -1139,6 +1139,23 @@ int zidx_rewind(zidx_index* index)
     return zidx_seek(index, 0);
 }
 
+int zidx_eof(zidx_index* index)
+{
+    return index->stream_state == ZX_STATE_FILE_TRAILER
+            || index->stream_state == ZX_STATE_END_OF_FILE;
+}
+
+int zidx_error(zidx_index* index)
+{
+    /* TODO: Implement invalid state. */
+    return index->stream_state == ZX_STATE_INVALID;
+}
+
+int zidx_uncomp_size(zidx_index* index)
+{
+    return index->uncompressed_size;
+}
+
 typedef struct spacing_data_s
 {
     off_t last_offset;
@@ -1497,6 +1514,25 @@ zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx)
         return &index->list[idx];
     }
     return NULL;
+}
+
+int zidx_checkpoint_count(zidx_index* index) {
+    return index->list_count;
+}
+
+off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp) {
+    return ckp->offset.uncomp;
+}
+
+size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
+                                  const void** result)
+{
+    if (result == NULL) {
+        ZX_LOG("ERROR: result pointer is null.");
+        return 0;
+    }
+    *result = ckp->window_data;
+    return ckp->window_length;
 }
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
