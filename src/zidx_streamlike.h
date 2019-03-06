@@ -8,7 +8,10 @@
 #include "zidx.h"
 
 streamlike_t* sl_zx_open(zidx_index *index);
-void sl_zx_close(streamlike_t *stream);
+int sl_zx_close(streamlike_t *stream);
+
+streamlike_t* sl_zx_from_stream(streamlike_t *gzip_stream);
+streamlike_t* sl_zx_from_indexed_stream(streamlike_t *gzip_stream, streamlike_t *index_stream);
 
 size_t sl_zx_read_cb(void *context, void *buffer, size_t size);
 int sl_zx_seek_cb(void *context, off_t offset, int whence);

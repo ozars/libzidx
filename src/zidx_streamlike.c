@@ -32,9 +32,49 @@ streamlike_t* sl_zx_open(zidx_index *index)
     return sl;
 }
 
-void sl_zx_close(streamlike_t *stream)
+int sl_zx_close(streamlike_t *stream)
 {
+    int ret;
+    if (stream->context) {
+        ret = zidx_index_destroy(stream->context);
+        if (ret != ZX_RET_OK) {
+            free(stream);
+            return ret;
+        }
+    }
     free(stream);
+    return 0;
+}
+
+streamlike_t* sl_zx_from_stream(streamlike_t *gzip_stream)
+{
+    return sl_zx_from_indexed_stream(gzip_stream, NULL);
+}
+
+streamlike_t* sl_zx_from_indexed_stream(streamlike_t *gzip_stream, streamlike_t *index_stream)
+{
+    if (gzip_stream == NULL) {
+        return NULL;
+    }
+    zidx_index *index = zidx_index_create();
+    streamlike_t *stream;
+    if (!index) {
+        return NULL;
+    }
+    if (zidx_index_init(index, gzip_stream) != ZX_RET_OK) {
+        goto fail;
+    }
+    if (index_stream && zidx_import(index, index_stream) != ZX_RET_OK) {
+        goto fail;
+    }
+    stream = sl_zx_open(index);
+    if (stream == NULL) {
+        goto fail;
+    }
+    return stream;
+  fail:
+    zidx_index_destroy(index);
+    return NULL;
 }
 
 size_t sl_zx_read_cb(void *context, void *buffer, size_t size)
