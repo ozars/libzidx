@@ -891,9 +891,14 @@ int zidx_read_ex(zidx_index* index,
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
                 return ret;
             }
-            /* Break switch if there are more blocks. */
+            /* Done if buffer is filled. */
+            if (zs->avail_out == 0) {
+              break;
+            }
+            /* Otherwise ensure stream state is file trailer. */
             if (index->stream_state != ZX_STATE_FILE_TRAILER) {
-                break;
+                ZX_LOG("ERROR: Short read before end of the file.");
+                return ZX_ERR_CORRUPTED;
             }
         case ZX_STATE_FILE_TRAILER:
             /* TODO/BUG: Implement zlib separately. THIS IS TEMPORARY!!! */
@@ -913,7 +918,7 @@ int zidx_read_ex(zidx_index* index,
             ZX_LOG("Compressed/uncompressed size: %jd/%jd.",
                    (intmax_t) index->compressed_size,
                    (intmax_t) index->uncompressed_size);
-            break;
+            return 0;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
             ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
@@ -1141,8 +1146,7 @@ int zidx_rewind(zidx_index* index)
 
 int zidx_eof(zidx_index* index)
 {
-    return index->stream_state == ZX_STATE_FILE_TRAILER
-            || index->stream_state == ZX_STATE_END_OF_FILE;
+    return index->stream_state == ZX_STATE_END_OF_FILE;
 }
 
 int zidx_error(zidx_index* index)
