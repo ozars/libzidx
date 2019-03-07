@@ -11,6 +11,7 @@ namespace streamlike {
 
 class StreamlikeZidx : public Streamlike {
     public:
+        StreamlikeZidx(Streamlike&& gzipStream);
         StreamlikeZidx(Streamlike&& gzipStream, Streamlike& indexStream);
     private:
         Streamlike mGzipStream;
