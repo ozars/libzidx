@@ -79,7 +79,10 @@ streamlike_t* sl_zx_from_indexed_stream(streamlike_t *gzip_stream, streamlike_t 
 
 size_t sl_zx_read_cb(void *context, void *buffer, size_t size)
 {
-    return zidx_read(context, buffer, size);
+    int ret = zidx_read(context, buffer, size);
+    if (ret >= 0)
+        return ret;
+    return 0;
 }
 
 int sl_zx_seek_cb(void *context, off_t offset, int whence)
