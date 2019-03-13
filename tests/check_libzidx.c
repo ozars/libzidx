@@ -126,18 +126,16 @@ void teardown_core()
             if (zx_ret == 0) { \
                 file_completed = 1; \
             } else { \
-                for(i = 0; i < zx_ret; i++) \
-                { \
-                    next_byte = uncomp_data[offset]; \
-                    ck_assert_msg(buffer[i] == next_byte, \
-                                "Incorrect data at offset %ld, " \
-                                "expected %u (0x%02X), got %u (0x%02X).", \
-                                offset, next_byte, next_byte, buffer[i], \
-                                buffer[i]); \
-                    offset++; \
-                } \
+                ck_assert_msg(offset + zx_ret <= ZX_TEST_COMP_FILE_LENGTH, \
+                              "File is read beyond EOF %d bytes.", \
+                              offset + zx_ret - ZX_TEST_COMP_FILE_LENGTH); \
+                ck_assert_mem_eq(uncomp_data + offset, buffer, zx_ret); \
+                offset += zx_ret; \
             } \
         } \
+        ck_assert_msg(offset == ZX_TEST_COMP_FILE_LENGTH, \
+                      "Last %d bytes of file is not read.", \
+                      offset - ZX_TEST_COMP_FILE_LENGTH); \
     } while(0)
 
 START_TEST(test_comp_file_read)

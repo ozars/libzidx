@@ -792,6 +792,9 @@ int zidx_read_ex(zidx_index* index,
     /* Return value for zlib calls. */
     int z_ret;
 
+    /* Total number of bytes read. */
+    int total_read = 0;
+
     /* Window bits used for initializing inflate for headers. Window bits in
      * index can't be used for this purpose, because this variable will be used
      * for denoting stream type as well. */
@@ -891,6 +894,9 @@ int zidx_read_ex(zidx_index* index,
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
                 return ret;
             }
+
+            total_read = nbytes - zs->avail_out;
+
             /* Done if buffer is filled. */
             if (zs->avail_out == 0) {
               break;
@@ -918,7 +924,7 @@ int zidx_read_ex(zidx_index* index,
             ZX_LOG("Compressed/uncompressed size: %jd/%jd.",
                    (intmax_t) index->compressed_size,
                    (intmax_t) index->uncompressed_size);
-            return 0;
+            break;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
             ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
@@ -934,10 +940,10 @@ int zidx_read_ex(zidx_index* index,
 
     } /* end of switch(index->stream_state) */
 
-    ZX_LOG("Read %jd bytes.", (intmax_t)(zs->next_out - (uint8_t*)buffer));
+    ZX_LOG("Read %jd bytes.", (intmax_t)total_read);
 
     /* Return number of bytes read into the buffer. */
-    return zs->next_out - (uint8_t*)buffer;
+    return total_read;
 }
 
 int zidx_seek(zidx_index* index, off_t offset)
