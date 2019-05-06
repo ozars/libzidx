@@ -792,6 +792,9 @@ int zidx_read_ex(zidx_index* index,
     /* Return value for zlib calls. */
     int z_ret;
 
+    /* Total number of bytes read. */
+    int total_read = 0;
+
     /* Window bits used for initializing inflate for headers. Window bits in
      * index can't be used for this purpose, because this variable will be used
      * for denoting stream type as well. */
@@ -840,6 +843,7 @@ int zidx_read_ex(zidx_index* index,
             if (z_ret != Z_OK) {
                 ZX_LOG("ERROR: inflate initialization returned error (%d).",
                        z_ret);
+                index->stream_state = ZX_STATE_INVALID;
                 return ZX_ERR_ZLIB(z_ret);
             }
 
@@ -855,6 +859,7 @@ int zidx_read_ex(zidx_index* index,
                 ret = read_headers(index, block_callback, callback_context);
                 if (ret != ZX_RET_OK) {
                     ZX_LOG("ERROR: While reading headers (%d).", ret);
+                    index->stream_state = ZX_STATE_INVALID;
                     return ret;
                 }
 
@@ -869,6 +874,7 @@ int zidx_read_ex(zidx_index* index,
                 if (z_ret != Z_OK) {
                     ZX_LOG("ERROR: initialize_inflate returned error (%d).",
                            z_ret);
+                    index->stream_state = ZX_STATE_INVALID;
                     return ZX_ERR_ZLIB(z_ret);
                 }
             }
@@ -889,11 +895,21 @@ int zidx_read_ex(zidx_index* index,
             ret = read_deflate_blocks(index, block_callback, callback_context);
             if (ret != ZX_RET_OK) {
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
+                index->stream_state = ZX_STATE_INVALID;
                 return ret;
             }
-            /* Break switch if there are more blocks. */
+
+            total_read = nbytes - zs->avail_out;
+
+            /* Done if buffer is filled. */
+            if (zs->avail_out == 0) {
+              break;
+            }
+            /* Otherwise ensure stream state is file trailer. */
             if (index->stream_state != ZX_STATE_FILE_TRAILER) {
-                break;
+                ZX_LOG("ERROR: Short read before end of the file.");
+                index->stream_state = ZX_STATE_INVALID;
+                return ZX_ERR_CORRUPTED;
             }
         case ZX_STATE_FILE_TRAILER:
             /* TODO/BUG: Implement zlib separately. THIS IS TEMPORARY!!! */
@@ -902,6 +918,7 @@ int zidx_read_ex(zidx_index* index,
                 if (ret != ZX_RET_OK) {
                     ZX_LOG("ERROR: While parsing gzip file trailer (%d).",
                            ret);
+                    index->stream_state = ZX_STATE_INVALID;
                     return ret;
                 }
             }
@@ -916,7 +933,8 @@ int zidx_read_ex(zidx_index* index,
             break;
         case ZX_STATE_INVALID:
             /* TODO: Implement this. */
-            ZX_LOG("ERROR: NOT IMPLEMENTED YET.");
+            ZX_LOG("ERROR: The stream is in invalid state, corrupted due to "
+                   "some error.");
             return ZX_ERR_CORRUPTED;
 
         case ZX_STATE_END_OF_FILE:
@@ -925,14 +943,15 @@ int zidx_read_ex(zidx_index* index,
 
         default:
             ZX_LOG("ERROR: Unknown state (%d).", (int)index->stream_state);
+            index->stream_state = ZX_STATE_INVALID;
             return ZX_ERR_CORRUPTED;
 
     } /* end of switch(index->stream_state) */
 
-    ZX_LOG("Read %jd bytes.", (intmax_t)(zs->next_out - (uint8_t*)buffer));
+    ZX_LOG("Read %jd bytes.", (intmax_t)total_read);
 
     /* Return number of bytes read into the buffer. */
-    return zs->next_out - (uint8_t*)buffer;
+    return total_read;
 }
 
 int zidx_seek(zidx_index* index, off_t offset)
@@ -1141,8 +1160,7 @@ int zidx_rewind(zidx_index* index)
 
 int zidx_eof(zidx_index* index)
 {
-    return index->stream_state == ZX_STATE_FILE_TRAILER
-            || index->stream_state == ZX_STATE_END_OF_FILE;
+    return index->stream_state == ZX_STATE_END_OF_FILE;
 }
 
 int zidx_error(zidx_index* index)
