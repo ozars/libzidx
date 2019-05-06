@@ -213,13 +213,14 @@ int sl_seek_wrapper(streamlike_t *stream, off_t offset)
         \
         do { \
             offset = tellf(context) + step; \
-            \
+            if (offset >= ZX_TEST_COMP_FILE_LENGTH) break; \
             ret = seekf(context, offset); \
             ck_assert_msg(ret == 0 || \
                         (offset >= last_offset && ret == ZX_ERR_STREAM_EOF), \
                         "Seek returned %d at offset %ld", ret, offset); \
             \
-            r_len = readf(context, buffer, sizeof(buffer)); \
+            r_len = offset + sizeof(buffer) < ZX_TEST_COMP_FILE_LENGTH ? sizeof(buffer) : ZX_TEST_COMP_FILE_LENGTH - offset; \
+            r_len = readf(context, buffer, r_len); \
             ck_assert_msg(r_len >= 0, "Read returned %d at offset %ld", \
                                     ret, offset); \
             \
