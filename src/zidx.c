@@ -1667,6 +1667,8 @@ static int commit_temp_index_(zidx_index *index, zidx_index *temp_index)
     /* Copy current index. */
     index->list       = temp_index->list;
     index->list_count = temp_index->list_count;
+    temp_index->list        = NULL;
+    temp_index->list_count  = 0;
 
     return ZX_RET_OK;
 }
@@ -1685,16 +1687,16 @@ int zidx_import_ex(zidx_index *index,
                 if (s_err) { \
                     ZX_LOG("ERROR: Couldn't read " name " (%d).", s_err); \
                     ret = s_err; \
-                    goto fail; \
+                    goto end; \
                 } else if(sl_eof(stream)) { \
                     ZX_LOG("ERROR: Unexpected end-of-file while reading %s.", \
                            name); \
                     ret = ZX_ERR_STREAM_EOF; \
-                    goto fail; \
+                    goto end; \
                 } else { \
                     ZX_LOG("ERROR: Asynchronous read is not implemented."); \
                     ret = ZX_ERR_NOT_IMPLEMENTED; \
-                    goto fail; \
+                    goto end; \
                 } \
             } \
             if (sizeof(*buf) == buflen) { \
@@ -1772,14 +1774,16 @@ int zidx_import_ex(zidx_index *index,
     ZX_READ_TEMPLATE_(buf, sizeof(zx_magic_prefix), "magic prefix");
     if (memcmp(zx_magic_prefix, buf, sizeof(zx_magic_prefix))) {
         ZX_LOG("ERROR: Incorrect magic prefix.");
-        return ZX_ERR_CORRUPTED;
+        ret = ZX_ERR_CORRUPTED;
+        goto end;
     }
 
     /* Read version string and check. */
     ZX_READ_TEMPLATE_(buf, sizeof(zx_version_prefix), "version prefix");
     if (memcmp(zx_version_prefix, buf, sizeof(zx_version_prefix))) {
         ZX_LOG("ERROR: Incorrect version prefix.");
-        return ZX_ERR_CORRUPTED;
+        ret = ZX_ERR_CORRUPTED;
+        goto end;
     }
 
     /* Read type of checksum. TODO: Not implemented yet. */
@@ -1798,7 +1802,8 @@ int zidx_import_ex(zidx_index *index,
     off = i64;
     if (off != i64) {
         ZX_LOG("ERROR: Compressed length doesn't fit to offset type.");
-        return ZX_ERR_INVALID_OP;
+        ret = ZX_ERR_INVALID_OP;
+        goto end;
     }
     index->compressed_size = off;
 
@@ -1807,7 +1812,8 @@ int zidx_import_ex(zidx_index *index,
     off = i64;
     if (off != i64) {
         ZX_LOG("ERROR: Uncompressed length doesn't fit to offset type.");
-        return ZX_ERR_INVALID_OP;
+        ret = ZX_ERR_INVALID_OP;
+        goto end;
     }
     index->uncompressed_size = off;
 
@@ -1819,7 +1825,8 @@ int zidx_import_ex(zidx_index *index,
     if (i32 < 0) {
         ZX_LOG("ERROR: Number of checkpoints should be nonnegative (%d).",
                i32);
-        return ZX_ERR_CORRUPTED;
+        ret = ZX_ERR_CORRUPTED;
+        goto end;
     }
     temp_index->list_count = i32;
     temp_index->list_capacity = i32;
@@ -1846,7 +1853,7 @@ int zidx_import_ex(zidx_index *index,
     if (temp_index->list == NULL) {
         ZX_LOG("ERROR: Couldn't allocate space for list.");
         ret = ZX_ERR_MEMORY;
-        goto fail;
+        goto end;
     }
     end = temp_index->list + temp_index->list_count;
 
@@ -1858,7 +1865,7 @@ int zidx_import_ex(zidx_index *index,
         if (sizeof(i64) > sizeof(it->offset.uncomp)) {
             if (i64 > 0x7FFFFFFF) {
                 ret = ZX_ERR_OVERFLOW;
-                goto fail;
+                goto end;
             }
         }
         it->offset.uncomp = i64;
@@ -1868,7 +1875,7 @@ int zidx_import_ex(zidx_index *index,
         if (sizeof(i64) > sizeof(it->offset.comp)) {
             if (i64 > 0x7FFFFFFF) {
                 ret = ZX_ERR_OVERFLOW;
-                goto fail;
+                goto end;
             }
         }
         it->offset.comp = i64;
@@ -1880,7 +1887,7 @@ int zidx_import_ex(zidx_index *index,
         if (it->offset.comp_bits_count == 0 && it->offset.comp_byte != 0) {
             ZX_LOG("ERROR: Boundary byte is not zero while bits count is.");
             ret = ZX_ERR_OVERFLOW;
-            goto fail;
+            goto end;
         }
 
         /* Read offset of window data. TODO: Verify this data. */
@@ -1903,7 +1910,7 @@ int zidx_import_ex(zidx_index *index,
             if (it->window_data == NULL) {
                 ZX_LOG("ERROR: Couldn't allocate space for window data.");
                 ret = ZX_ERR_MEMORY;
-                goto fail;
+                goto end;
             }
             /* Write window data. */
             ZX_READ_TEMPLATE_(it->window_data, it->window_length,
@@ -1923,9 +1930,11 @@ int zidx_import_ex(zidx_index *index,
         return zx_ret;
     }
 
-    return ZX_RET_OK;
 
-fail:
+    ret = ZX_RET_OK;
+    // fallthrough
+
+end:
     if (temp_index) {
         if (temp_index->list) {
             for (it = temp_index->list; it < end; it++) {
