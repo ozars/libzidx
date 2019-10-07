@@ -769,6 +769,12 @@ int zidx_index_destroy(zidx_index* index)
     /* Else is unnecessary, since this practically means capacity is zero and
      * list is NULL. Therefore, nothing to free.  */
 
+    /* Release buffers */
+    free(index->seeking_data_buffer);
+    index->seeking_data_buffer = NULL;
+    free(index->comp_data_buffer);
+    index->comp_data_buffer = NULL;
+
     return ret;
 }
 
