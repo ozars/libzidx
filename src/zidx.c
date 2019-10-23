@@ -1482,7 +1482,7 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
 
     /* Check the last element first. We check it in here so that we don't
      * account for it in every iteartion of the loop below. */
-    if(ZX_OFFSET_(right) < offset) {
+    if(ZX_OFFSET_(right) <= offset) {
         ZX_LOG("Offset (%jd) found at last checkpoint (%d) start at "
                "uncompressed offset (%jd).", (intmax_t)offset, right,
                ZX_OFFSET_(right));
