@@ -25,7 +25,7 @@ mkdir "$TEST_EXT_DIR" || true
 cd "$TEST_EXT_DIR"
 git clone --branch "$LIBCHECK_TAG" https://github.com/libcheck/check
 git clone https://github.com/ozars/pcg-c
-git clone git@github.com:ozars/libstreamlike.git
+git clone https://github.com/ozars/libstreamlike
 
 # Install check
 cd "$TEST_EXT_DIR/check"
