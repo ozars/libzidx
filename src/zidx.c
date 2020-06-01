@@ -71,6 +71,31 @@ struct zidx_index_s
 };
 
 /**
+ * Returns the combined crc32 checksum from two crc checksums.
+ *
+ * This function is used as a helper function for updating checksums of modified blocks in file
+ *
+ * \param crc1 First crc checksum
+ * \param crc2 Second crc checksum
+ * \param len2 Length of the second sequence of data (not the length of the checksum, but the length of the data the checksum was computed from)
+ *
+ */
+unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
+{
+
+	Bytef *c=calloc(0,sizeof(char)*len2);
+	if(!c)
+	{
+		return ZX_MEM_ERROR;
+	}
+	unsigned long crc_ret=crc32(crc1,c,len2);
+
+	unsigned long crc_ret_2=crc32(0L,Z_NULL,0);
+	crc_ret_2=crc32(crc_ret_2,c,len2);
+
+	return crc_ret ^ crc2 ^ crc_ret_2;
+}
+/**
  * Return number of unused bits count in the last byte consumed by inflate().
  *
  * This function should be used after a call to inflate. See the documentation
@@ -790,7 +815,7 @@ int zidx_read_ex(zidx_index* index,
                  zidx_block_callback block_callback,
                  void *callback_context)
 {
-    /* TODO: Implement support for concatanated gzip streams. */
+    /* TODO: Implement support for concatnated gzip streams. */
 
     /* Return value for private (static) function calls. */
     int ret;
@@ -1370,6 +1395,7 @@ int zidx_fill_checkpoint(zidx_index* index,
     /* dict_length can't be more than 32768. */
     new_checkpoint->window_length = dict_length;
 
+
     return ZX_RET_OK;
 
 cleanup:
@@ -1903,6 +1929,9 @@ int zidx_import_ex(zidx_index *index,
          * bytes instead of 4 bytes. Need to update file specification. */
         ZX_READ_TEMPLATE_(&it->window_length, sizeof(it->window_length),
                           "window length");
+
+        /*Read offset of checksum data.*/
+        ZX_READ_TEMPLATE_(&i32,sizeof(i32),"checksum length");
     }
 
     /* TODO: Verify window data start offset. */
@@ -2052,15 +2081,16 @@ int zidx_export_ex(zidx_index *index,
     i64 = index->uncompressed_size;
     ZX_WRITE_TEMPLATE_(&i64, 8, "the uncompressed length");
 
+
     /* Checksum of indexed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");
+    ZX_WRITE_TEMPLATE_(chksm, sizeof(i32), "checksum of the index");
 
     /* Number of indexed checkpoints. */
     i32 = index->list_count;
     ZX_WRITE_TEMPLATE_(&i32, sizeof(i32), "number of checkpoints");
 
     /* Checksum of whole checkpoint metadata. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of metadata");
+    ZX_WRITE_TEMPLATE_(&zero, 1, "checksum of metadata");
 
     /* Flags. TODO: Not implemented yet. Also it's non-conformant: Current
      * implementation assumes as if ZX_UNKNOWN_CHECKSUM and
@@ -2117,6 +2147,9 @@ int zidx_export_ex(zidx_index *index,
          * bytes instead of 4 bytes. Need to update file specification. */
         ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),
                            "window length");
+
+        /*Write checksum of checkpoint*/
+        ZX_WRITE_TEMPLATE_(&i32,sizeof(i32),"checksum of the checkpoint");
 
         /* Update window offset for next checkpoint. */
         window_off += it->window_length;
