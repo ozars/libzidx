@@ -59,6 +59,7 @@ struct zidx_index_s
     int list_capacity;
     zidx_checkpoint *list;
     zidx_checksum_option checksum_option;
+    uint32_t running_checksum;
     unsigned int window_size;
     int window_bits;
     uint8_t *comp_data_buffer;
@@ -79,6 +80,9 @@ struct zidx_index_s
  * \param crc2 Second crc checksum
  * \param len2 Length of the second sequence of data (not the length of the checksum, but the length of the data the checksum was computed from)
  *
+ * \return The combined crc32 checksum of the input checksums
+ *
+ * TODO: Update for 32 bit return instead of 64 bit.
  */
 unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
 {
@@ -86,6 +90,7 @@ unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
 	Bytef *c=calloc(0,sizeof(char)*len2);
 	if(!c)
 	{
+		free(c);
 		return ZX_MEM_ERROR;
 	}
 	unsigned long crc_ret=crc32(crc1,c,len2);
@@ -93,8 +98,53 @@ unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
 	unsigned long crc_ret_2=crc32(0L,Z_NULL,0);
 	crc_ret_2=crc32(crc_ret_2,c,len2);
 
+	free(c);
 	return crc_ret ^ crc2 ^ crc_ret_2;
 }
+
+/**
+ * Given a crc checksum and a combined checksum, returns the extracted checksum from the combined checksum.
+ * For example, given data segments A and B, and their respective checksums chk_A, chk_B, create a combined checksum of blocks A and B called chk_AB.
+ * Extract function returns chk_B given chk_A and chk_AB.
+ *
+ * This function is used as a helper function for updating checksums of modified blocks in file
+ *
+ * \param crc1 First crc checksum
+ * \param crc2 Second crc checksum. Combined checksum of crc1 and the checksum of another block of data
+ * \param len2 Length of the second block of data (not the length of the checksum but of the data)
+ * \return The extracted checksum of the second block of data from a combined checksum.
+ */
+unsigned long crc32_extract(uLong crc1,uLong crc2,z_off_t len2)
+{
+	Bytef *c=calloc(0,sizeof(char)*len2);
+
+	if(!c)
+	{
+			free(c);
+			return ZX_MEM_ERROR;
+	}
+	unsigned long crc_ret=crc32(0L,Z_NULL,0);
+	crc_ret=crc32(crc_ret,c,len2);
+
+	unsigned long crc_ret_2=crc32(crc1,c,len2);
+	free(c);
+	return crc2 ^ crc_ret ^ crc_ret_2;
+}
+
+
+/**
+ * In place updating of a checkpoint's checksum.
+ * Given a checkpoint struct, reads the window data and computes a crc32 checksum of it. Then updates the checkpoint->checksum field
+ * TODO: unfinished
+ * \param checkpoint The checkpoint whose checksum is being computed
+ * \return Returns 1 if successful, negative otherwise.
+ */
+int update_checkpoint_crc32(zidx_checkpoint_s* checkpoint)
+{
+
+	return 1;
+}
+
 /**
  * Return number of unused bits count in the last byte consumed by inflate().
  *
@@ -160,7 +210,7 @@ static inline int is_on_block_boundary(z_stream *zs)
 static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
                                      int flush)
 {
-    /* Number of bytes in input/output buffer before inflate. */
+    /* Number of bytes in input/output buffer before inflate. */s
     int available_comp_bytes;
     int available_uncomp_bytes;
 
@@ -203,6 +253,17 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     /* Compute number of bytes inflated. */
     comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
     uncomp_bytes_inflated = available_uncomp_bytes - zs->avail_out;
+
+    /*Compute checksum*/
+    //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
+
+	uint32_t block_checksum=crc32(0L,Z_NULL,0);
+	block_checksum=crc32_z(new_checksum,zs_avail_out-comp_bytes_inflated,comp_bytes_inflated);
+
+	uint32_t index_checksum=index->checksum;
+	//update index checksum with the checksum of the decompressed blocks
+	index->checksum=crc32_combine(index_crc,block_checksum,comp_bytes_inflated);
+
 
     /* Update byte offsets. */
     index->offset.comp   += comp_bytes_inflated;
@@ -1395,6 +1456,10 @@ int zidx_fill_checkpoint(zidx_index* index,
     /* dict_length can't be more than 32768. */
     new_checkpoint->window_length = dict_length;
 
+    /*compute checksum*/
+    uint64_t new_checksum=crc32(0L,Z_NULL,0);
+    new_checksum=crc32_z(new_checksum,window_data,window_length);
+    new_checkpoint->checksum=new_checksum;
 
     return ZX_RET_OK;
 
