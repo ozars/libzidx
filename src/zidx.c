@@ -244,7 +244,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
 
 	uint32_t block_checksum=crc32(0L,Z_NULL,0);
-	block_checksum=crc32(block_checksum,zs->avail_out-comp_bytes_inflated,comp_bytes_inflated);
+	block_checksum=crc32(block_checksum,zs->next_out-comp_bytes_inflated,comp_bytes_inflated);
 
 
 	//update index checksum with the checksum of the decompressed blocks
@@ -487,7 +487,8 @@ static int read_deflate_blocks(zidx_index* index,
                 ZX_LOG("On block boundary.");
 
                 /*If on a block boundary, we're on a checkpoint so update the latest checkpoint with the index's running checksum*/
-                int curr_chkpt_idx=zidx_get_checkpoint_idx(index,index->offset->uncomp);
+
+                int curr_chkpt_idx=zidx_get_checkpoint_idx(index,index->offset.uncomp);
                 zidx_get_checkpoint(index,curr_chkpt_idx)->checksum=index->running_checksum;
 
                 if (is_last_deflate_block(zs)) {
