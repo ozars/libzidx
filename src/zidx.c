@@ -91,7 +91,7 @@ unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
 	if(!c)
 	{
 		free(c);
-		return ZX_MEM_ERROR;
+		return ZX_ERR_MEMORY;
 	}
 	unsigned long crc_ret=crc32(crc1,c,len2);
 
@@ -121,7 +121,7 @@ unsigned long crc32_extract(uLong crc1,uLong crc2,z_off_t len2)
 	if(!c)
 	{
 			free(c);
-			return ZX_MEM_ERROR;
+			return ZX_ERR_MEMORY;
 	}
 	unsigned long crc_ret=crc32(0L,Z_NULL,0);
 	crc_ret=crc32(crc_ret,c,len2);
@@ -196,7 +196,7 @@ static inline int is_on_block_boundary(z_stream *zs)
 static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
                                      int flush)
 {
-    /* Number of bytes in input/output buffer before inflate. */s
+    /* Number of bytes in input/output buffer before inflate. */
     int available_comp_bytes;
     int available_uncomp_bytes;
 
@@ -244,7 +244,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
 
 	uint32_t block_checksum=crc32(0L,Z_NULL,0);
-	block_checksum=crc32(new_checksum,zs_avail_out-comp_bytes_inflated,comp_bytes_inflated);
+	block_checksum=crc32(block_checksum,zs->avail_out-comp_bytes_inflated,comp_bytes_inflated);
 
 
 	//update index checksum with the checksum of the decompressed blocks
@@ -487,10 +487,8 @@ static int read_deflate_blocks(zidx_index* index,
                 ZX_LOG("On block boundary.");
 
                 /*If on a block boundary, we're on a checkpoint so update the latest checkpoint with the index's running checksum*/
-                int curr_chkpt_idx=zidx_get_checkpoint_idx(index,index->offset);
-                zidx_get_checkpoint(index,curr_ckpt_idx)->checksum=index->running_checksum;
-
-                index->list
+                int curr_chkpt_idx=zidx_get_checkpoint_idx(index,index->offset->uncomp);
+                zidx_get_checkpoint(index,curr_chkpt_idx)->checksum=index->running_checksum;
 
                 if (is_last_deflate_block(zs)) {
                     ZX_LOG("Also last block.");
@@ -1457,7 +1455,7 @@ int zidx_fill_checkpoint(zidx_index* index,
 
     /*compute checksum*/
     uint32_t new_checksum=crc32(0L,Z_NULL,0);
-    new_checksum=crc32_z(new_checksum,window_data,window_length);
+    new_checksum=crc32_z(new_checksum,new_checkpoint->window_data,new_checkpoint->window_length);
     new_checkpoint->checksum=new_checksum;
 
     return ZX_RET_OK;
@@ -2147,7 +2145,7 @@ int zidx_export_ex(zidx_index *index,
 
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(chksm, sizeof(i32), "checksum of the index");
+    ZX_WRITE_TEMPLATE_(&i32, sizeof(i32), "checksum of the index");
 
     /* Number of indexed checkpoints. */
     i32 = index->list_count;
