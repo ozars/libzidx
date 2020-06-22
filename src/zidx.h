@@ -185,6 +185,7 @@ int zidx_build_index_ex(zidx_index* index,
                         void *callback_context);
 
 zidx_checkpoint* zidx_create_checkpoint();
+
 int zidx_fill_checkpoint(zidx_index* index,
                          zidx_checkpoint* new_checkpoint,
                          zidx_checkpoint_offset* offset);
@@ -193,6 +194,10 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset);
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx);
 int zidx_checkpoint_count(zidx_index* index);
 /* TODO: Consider dropping consts before release. */
+int zidx_get_checkpoint_list_len(zidx_index* index);
+uint32_t zidx_get_checkpoint_checksum(zidx_index* index,int idx);
+uint32_t zidx_get_last_checksum(zidx_index* index);
+
 off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result);

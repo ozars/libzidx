@@ -586,6 +586,7 @@ static int read_gzip_trailer(zidx_index* index)
 
 zidx_index* zidx_index_create()
 {
+	printf("I was called");
     zidx_index *index;
     index = (zidx_index*) malloc(sizeof(zidx_index));
     return index;
@@ -1456,7 +1457,7 @@ int zidx_fill_checkpoint(zidx_index* index,
 
     /*compute checksum*/
     uint32_t new_checksum=crc32(0L,Z_NULL,0);
-    new_checksum=crc32_z(new_checksum,new_checkpoint->window_data,new_checkpoint->window_length);
+    new_checksum=crc32(new_checksum,new_checkpoint->window_data,new_checkpoint->window_length);
     new_checkpoint->checksum=new_checksum;
 
     return ZX_RET_OK;
@@ -1534,6 +1535,46 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     return ZX_RET_OK;
 }
 
+/**
+ * Returns the number of elements in an index's checkpoint list
+ * \param index the index holding the checkpoint list
+ * \return the number of elements in the checkpoint list
+ */
+int zidx_get_checkpoint_list_len(zidx_index* index)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	return index->list_count;
+}
+
+uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	if(idx<0)
+	{
+		ZX_LOG("ERROR: index (%d) is negative.", idx);
+		return ZX_ERR_PARAMS;
+	}
+	return index->list[idx].checksum;
+}
+
+uint32_t zidx_get_last_checksum(zidx_index* index)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	return zidx_get_checkpoint_checksum(index,index->list_count);
+}
+
 int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
 {
     /* TODO: Return EOF error if EOF is known and offset is beyond it. */
@@ -1571,7 +1612,7 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
 
     /* Check the last element first. We check it in here so that we don't
      * account for it in every iteartion of the loop below. */
-    if(ZX_OFFSET_(right) <= offset) {
+    if(ZX_OFFSET_(right) < offset) {
         ZX_LOG("Offset (%jd) found at last checkpoint (%d) start at "
                "uncompressed offset (%jd).", (intmax_t)offset, right,
                ZX_OFFSET_(right));
