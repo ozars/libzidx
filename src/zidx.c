@@ -586,7 +586,6 @@ static int read_gzip_trailer(zidx_index* index)
 
 zidx_index* zidx_index_create()
 {
-	printf("I was called");
     zidx_index *index;
     index = (zidx_index*) malloc(sizeof(zidx_index));
     return index;
