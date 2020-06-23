@@ -194,6 +194,9 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset);
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx);
 int zidx_checkpoint_count(zidx_index* index);
 /* TODO: Consider dropping consts before release. */
+
+uint32_t zidx_get_index_running_checksum(zidx_index* index);
+
 int zidx_get_checkpoint_list_len(zidx_index* index);
 uint32_t zidx_get_checkpoint_checksum(zidx_index* index,int idx);
 uint32_t zidx_get_last_checksum(zidx_index* index);
