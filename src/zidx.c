@@ -285,7 +285,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
  *
  * \return The return value of inflateInit2() or inflateReset2().
  *
- * \todo  It is reduntant to pass zs, as it should be same with
+ * \todo  It is redundant to pass zs, as it should be same with
  *        index->z_stream. Consider removing second argument.
  * */
 static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
@@ -977,7 +977,6 @@ int zidx_read_ex(zidx_index* index,
             /* Set output buffer and available bytes for output. */
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
-
             ret = read_deflate_blocks(index, block_callback, callback_context);
             if (ret != ZX_RET_OK) {
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
@@ -1534,8 +1533,8 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     else
     {
     	uint32_t indiv_checksum=crc32(0L,Z_NULL,0);
-    	indiv_checksum=(indiv_checksum,checkpoint->window_data,checkpoint->window_length);
-    	checkpoint->checksum=crc32_combine(index->list[index->list_count-1].checksum,indiv_checksum,checkpoint->window_length);
+    	indiv_checksum=crc32(indiv_checksum,checkpoint->window_data,checkpoint->window_length-1);
+    	checkpoint->checksum=crc32_combine(index->list[index->list_count-1].checksum,indiv_checksum,checkpoint->window_length-1);
 
 
     }
@@ -1564,6 +1563,10 @@ int zidx_get_checkpoint_list_len(zidx_index* index)
 	return index->list_count;
 }
 
+const char* win_dat(zidx_index* index,int idx)
+{
+	return index->list[idx].window_data;
+}
 
 uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
 {
@@ -2058,7 +2061,7 @@ int zidx_import_ex(zidx_index *index,
                           "window length");
 
         /*Read checksum data.*/
-        ZX_READ_TEMPLATE_(&it->checksum,sizeof(i32),"checkpoint checksum");
+        ZX_READ_TEMPLATE_(&it->checksum,sizeof(it->checksum),"checkpoint checksum");
     }
 
     /* TODO: Verify window data start offset. */
@@ -2217,7 +2220,7 @@ int zidx_export_ex(zidx_index *index,
 
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&i32, sizeof(i32), "checksum of the index");
+    ZX_WRITE_TEMPLATE_(&i32, 4, "checksum of the index");
 
     /* Number of indexed checkpoints. */
     i32 = index->list_count;
@@ -2282,7 +2285,7 @@ int zidx_export_ex(zidx_index *index,
         ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),"window length");
 
         /*Write checksum of checkpoint*/
-        ZX_WRITE_TEMPLATE_(&it->checksum,sizeof(i32),"checksum of the checkpoint");
+        ZX_WRITE_TEMPLATE_(&it->checksum,sizeof(it->checksum),"checksum of the checkpoint");
 
         /* Update window offset for next checkpoint. */
         window_off += it->window_length;
