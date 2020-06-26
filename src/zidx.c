@@ -186,6 +186,7 @@ static inline int is_on_block_boundary(z_stream *zs)
  *
  * This function is just a wrapper around inflate() function of zlib library.
  * It updates offsets in index data after inflating.
+ * Also updates running_checksum field in index data after inflating, for use in checksum computation
  *
  * \param index Index data.
  * \param zs    zlib stream data.
@@ -244,11 +245,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
 
 	uint32_t block_checksum=crc32(0L,Z_NULL,0);
-	block_checksum=crc32(block_checksum,zs->next_out-uncomp_bytes_inflated,uncomp_bytes_inflated);
-
-
-	//update index checksum with the checksum of the decompressed blocks
-	index->running_checksum=crc32_combine(index->running_checksum,block_checksum,uncomp_bytes_inflated);
+	index->running_checksum=crc32(block_checksum,zs->next_out-uncomp_bytes_inflated,uncomp_bytes_inflated);
 
 
     /* Update byte offsets. */
@@ -477,21 +474,22 @@ static int read_deflate_blocks(zidx_index* index,
             zs->next_in  = buf;
             zs->avail_in = s_read_len;
         }
-        if (block_callback == NULL) {
+        if (block_callback == NULL)
+        {
             z_ret = inflate_and_update_offset(index, zs, Z_SYNC_FLUSH);
-        } else {
+        }
+        else
+        {
             z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
         }
-        if (z_ret == Z_OK || z_ret == Z_STREAM_END) {
-            if (is_on_block_boundary(zs)) {
+        if (z_ret == Z_OK || z_ret == Z_STREAM_END)
+        {
+            if (is_on_block_boundary(zs))
+            {
                 ZX_LOG("On block boundary.");
 
-                /*If on a block boundary, we're on a checkpoint so update the latest checkpoint with the index's running checksum*/
-
-                int curr_chkpt_idx=zidx_get_checkpoint_idx(index,index->offset.uncomp);
-                index->list[curr_chkpt_idx].checksum=index->running_checksum;
-
-                if (is_last_deflate_block(zs)) {
+                if (is_last_deflate_block(zs))
+                {
                     ZX_LOG("Also last block.");
                     reading_completed = 1;
                     if (index->stream_type == ZX_STREAM_GZIP ||
@@ -512,15 +510,17 @@ static int read_deflate_blocks(zidx_index* index,
                     }
                 }
             }
-            if (zs->avail_out == 0) {
+            if (zs->avail_out == 0)
+            {
                 ZX_LOG("Buffer is full.");
                 reading_completed = 1;
             }
-            if (z_ret == Z_STREAM_END) {
+            if (z_ret == Z_STREAM_END)
+            {
                 ZX_LOG("End of stream reached.");
                 reading_completed = 1;
-                if (index->stream_type == ZX_STREAM_GZIP ||
-                        index->stream_type == ZX_STREAM_GZIP_OR_ZLIB) {
+                if (index->stream_type == ZX_STREAM_GZIP || index->stream_type == ZX_STREAM_GZIP_OR_ZLIB)
+                {
                     index->stream_state = ZX_STATE_FILE_TRAILER;
                 }
             }
@@ -1499,6 +1499,8 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         return ZX_ERR_CORRUPTED;
     }
 
+    int first_chkpt_flag=0;
+
     /* If there are any checkpoints on the list, the new checkpoint should have
      * greater uncompressed offset than that of last checkpoint. */
     if (index->list_count > 0) {
@@ -1510,6 +1512,10 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
                    (intmax_t)chpt_uncomp, (intmax_t)last_uncomp);
             return ZX_ERR_INVALID_OP;
         }
+    }
+    else
+    {
+    	first_chkpt_flag=1;
     }
 
     /* Open some space in list if needed. */
@@ -1523,6 +1529,17 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         }
     }
 
+    /*compute checksum for new checkpoint*/
+    uint32_t checkpoint_checksum=crc32(0L,Z_NULL,0);
+    if(first_chkpt_flag==1)
+    {
+    	checkpoint->checksum=crc32(checkpoint_checksum,checkpoint->window_data,checkpoint->window_length);
+    }
+    else
+    {
+    	checkpoint_checksum=crc32(checkpoint_checksum,checkpoint->window_data,checkpoint->window_length);
+    	checkpoint->checksum=crc32_combine(index->list[index->list_count-1].checksum,checkpoint_checksum,checkpoint->window_length);
+    }
     /* Add new checkpoint.*/
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
     index->list_count++;
@@ -1560,6 +1577,11 @@ uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
 		ZX_LOG("ERROR: index (%d) is negative.", idx);
 		return ZX_ERR_PARAMS;
 	}
+	else if(idx>=index->list_count)
+	{
+		ZX_LOG("ERROR: index (%d) is larger than checkpoint list size (%d).", idx,index->list_count);
+		return ZX_ERR_PARAMS;
+	}
 	return index->list[idx].checksum;
 }
 
@@ -1570,7 +1592,7 @@ uint32_t zidx_get_last_checksum(zidx_index* index)
 		ZX_LOG("ERROR: index is null.");
 		return ZX_ERR_PARAMS;
 	}
-	return zidx_get_checkpoint_checksum(index,index->list_count);
+	return zidx_get_checkpoint_checksum(index,index->list_count-1);
 }
 
 int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
@@ -1660,10 +1682,6 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
     #undef ZX_OFFSET_
 }
 
-uint32_t zidx_get_index_running_checksum(zidx_index* index)
-{
-	return index->running_checksum;
-}
 
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx)
 {
@@ -1971,7 +1989,7 @@ int zidx_import_ex(zidx_index *index,
     temp_index->list_capacity = i32;
 
     /* Checksum of whole checkpoint metadata. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 4, "checksum of metadata");
+    ZX_READ_TEMPLATE_(buf, 1, "checksum of metadata");
 
     /* Flags. TODO: Not implemented yet. Also it's non-conformant: Current
      * implementation assumes as if ZX_UNKNOWN_CHECKSUM and
@@ -2037,12 +2055,14 @@ int zidx_import_ex(zidx_index *index,
         ZX_READ_TEMPLATE_(&it->window_length, sizeof(it->window_length),
                           "window length");
 
-        /*Read offset of checksum data.*/
-        ZX_READ_TEMPLATE_(&i32,sizeof(i32),"checksum length");
+        /*Read checksum data.*/
+        ZX_READ_TEMPLATE_(&it->checksum,sizeof(i32),"checkpoint checksum");
     }
 
     /* TODO: Verify window data start offset. */
 
+
+	uint32_t running_checksum_check=crc32(0L,Z_NULL,0);
     /* Iterate over checkpoints for writing checkpoint window data. */
     for(it = temp_index->list; it < end; it++)
     {
@@ -2055,8 +2075,30 @@ int zidx_import_ex(zidx_index *index,
                 goto end;
             }
             /* Write window data. */
-            ZX_READ_TEMPLATE_(it->window_data, it->window_length,
-                              "window data");
+            ZX_READ_TEMPLATE_(it->window_data, it->window_length,"window data");
+
+			/* Checking checksums: Todo: Forgot to add crc extraction to get checksum of each block from running checksum*/
+			/*if(it=temp_index->list) //if at head of list, don't use previous checkpoints to compare against
+			{
+				if(crc32(running_checksum_check,it->window_data,it->window_length)!=it->checksum)
+				{
+					ZX_LOG("Error: Checksum mismatch when importing");
+					return ZX_ERR_CORRUPTED;
+				}
+			}
+			else //if not at head,
+			{
+				uint32_t single_checksum_check=crc32(0L,Z_NULL,0);
+				crc32(single_checksum_check,it->window_data,it->window_length);
+				running_checksum_check=crc32_combine(running_checksum_check,single_checksum_check,it->window_length);
+				if(running_checksum_check!=it->checksum)
+				{
+					ZX_LOG("Error: Checksum mismatch when importing");
+					return ZX_ERR_CORRUPTED;
+				}
+			}
+			*/
+
         } else {
             /* This might be unnecessary, given we used calloc above while
              * populating list, but let's keep it. */
@@ -2091,6 +2133,8 @@ end:
     #undef ZX_READ_TEMPLATE_
 
 }
+
+
 
 int zidx_export_ex(zidx_index *index,
                    streamlike_t *stream,
@@ -2252,11 +2296,10 @@ int zidx_export_ex(zidx_index *index,
 
         /* Write length of window data. TODO: Non-conformant. Has a length of 2
          * bytes instead of 4 bytes. Need to update file specification. */
-        ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),
-                           "window length");
+        ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),"window length");
 
         /*Write checksum of checkpoint*/
-        ZX_WRITE_TEMPLATE_(&i32,sizeof(i32),"checksum of the checkpoint");
+        ZX_WRITE_TEMPLATE_(&it->checksum,sizeof(i32),"checksum of the checkpoint");
 
         /* Update window offset for next checkpoint. */
         window_off += it->window_length;
@@ -2267,8 +2310,8 @@ int zidx_export_ex(zidx_index *index,
     {
         if (it->window_length > 0) {
             /* Write window data. */
-            ZX_WRITE_TEMPLATE_(it->window_data, it->window_length,
-                               "window data");
+            ZX_WRITE_TEMPLATE_(it->window_data, it->window_length,"window data");
+
         }
     }
 
