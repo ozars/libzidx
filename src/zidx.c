@@ -245,7 +245,8 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
 
 	uint32_t block_checksum=crc32(0L,Z_NULL,0);
-	index->running_checksum=crc32(block_checksum,zs->next_out-uncomp_bytes_inflated,uncomp_bytes_inflated);
+	block_checksum=crc32(block_checksum,zs->next_out-uncomp_bytes_inflated,uncomp_bytes_inflated);
+	index->running_checksum=crc32_combine(index->running_checksum,block_checksum,uncomp_bytes_inflated);
 
 
     /* Update byte offsets. */
@@ -370,8 +371,6 @@ static int read_headers(zidx_index* index,
     zs->next_in   = buf;
     zs->avail_in  = 0;
 
-    /*Make sure checksum is 0'ed out before inflating and updating checksum*/
-    index->running_checksum=0;
 
     header_completed = 0;
     while (!header_completed) {
@@ -482,6 +481,9 @@ static int read_deflate_blocks(zidx_index* index,
         {
             z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
         }
+
+
+
         if (z_ret == Z_OK || z_ret == Z_STREAM_END)
         {
             if (is_on_block_boundary(zs))
@@ -982,6 +984,7 @@ int zidx_read_ex(zidx_index* index,
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
 
+            index->running_checksum=crc32(0L,Z_NULL,0);
             ret = read_deflate_blocks(index, block_callback, callback_context);
             if (ret != ZX_RET_OK) {
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
@@ -1533,10 +1536,15 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
     uint32_t checkpoint_checksum=crc32(0L,Z_NULL,0);
     if(first_chkpt_flag==1)
     {
-    	checkpoint->checksum=crc32(checkpoint_checksum,checkpoint->window_data,checkpoint->window_length);
+    	//length-1 for null end byte
+    	//current logic: on the first checkpoint, make it so the checksum uses whatever might have been inflated previously from deflate blocks
+    	uint32_t block_checksum=crc32(0L,Z_NULL,0);
+    	block_checksum=crc32(block_checksum,checkpoint->window_data,checkpoint->window_length);
+    	checkpoint->checksum=crc32_combine(index->running_checksum,block_checksum,checkpoint->window_length);
     }
     else
     {
+    	//length-1 for null end byte
     	checkpoint_checksum=crc32(checkpoint_checksum,checkpoint->window_data,checkpoint->window_length);
     	checkpoint->checksum=crc32_combine(index->list[index->list_count-1].checksum,checkpoint_checksum,checkpoint->window_length);
     }
@@ -1564,6 +1572,7 @@ int zidx_get_checkpoint_list_len(zidx_index* index)
 	}
 	return index->list_count;
 }
+
 
 uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
 {
@@ -1621,7 +1630,7 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
     }
 
     /* Return not found if list is empty. */
-    if(index->list == 0) {
+    if(index->list_count == 0) {
         ZX_LOG("ERROR: List is empty, so checkpoint for given offset (%jd) is "
                "not found.", (intmax_t)offset);
         return ZX_ERR_NOT_FOUND;
@@ -1989,7 +1998,7 @@ int zidx_import_ex(zidx_index *index,
     temp_index->list_capacity = i32;
 
     /* Checksum of whole checkpoint metadata. TODO: Not implemented yet. */
-    ZX_READ_TEMPLATE_(buf, 1, "checksum of metadata");
+    ZX_READ_TEMPLATE_(buf, 4, "checksum of metadata");
 
     /* Flags. TODO: Not implemented yet. Also it's non-conformant: Current
      * implementation assumes as if ZX_UNKNOWN_CHECKSUM and
@@ -2241,7 +2250,7 @@ int zidx_export_ex(zidx_index *index,
     ZX_WRITE_TEMPLATE_(&i32, sizeof(i32), "number of checkpoints");
 
     /* Checksum of whole checkpoint metadata. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&zero, 1, "checksum of metadata");
+    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of metadata");
 
     /* Flags. TODO: Not implemented yet. Also it's non-conformant: Current
      * implementation assumes as if ZX_UNKNOWN_CHECKSUM and
