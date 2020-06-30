@@ -58,6 +58,7 @@ struct zidx_index_s
     int list_count;
     int list_capacity;
     zidx_checkpoint *list;
+    uint32_t running_checksum;
     zidx_checksum_option checksum_option;
     unsigned int window_size;
     int window_bits;
@@ -239,11 +240,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
     uncomp_bytes_inflated = available_uncomp_bytes - zs->avail_out;
 
-    /*Compute checksum*/
-    //Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
 
-	uint32_t block_checksum=crc32(0L,Z_NULL,0);
-	block_checksum=crc32(block_checksum,zs->next_out-uncomp_bytes_inflated,uncomp_bytes_inflated);
 
 
     /* Update byte offsets. */
@@ -470,6 +467,7 @@ static int read_deflate_blocks(zidx_index* index,
             zs->next_in  = buf;
             zs->avail_in = s_read_len;
         }
+        off_t last_offset=index->offset.uncomp;
         if (block_callback == NULL)
         {
             z_ret = inflate_and_update_offset(index, zs, Z_SYNC_FLUSH);
@@ -479,6 +477,10 @@ static int read_deflate_blocks(zidx_index* index,
             z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
         }
 
+        /*Update index running checksum*/
+		//Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
+
+		index->running_checksum=crc32(index->running_checksum,zs->next_out-(index->offset.uncomp-last_offset),(index->offset.uncomp-last_offset));
 
 
         if (z_ret == Z_OK || z_ret == Z_STREAM_END)
@@ -583,6 +585,9 @@ static int read_gzip_trailer(zidx_index* index)
     return ZX_RET_OK;
 }
 
+/**
+ * Creates a zidx index object
+ */
 zidx_index* zidx_index_create()
 {
     zidx_index *index;
@@ -712,6 +717,9 @@ int zidx_index_init_ex(zidx_index *index,
         ZX_LOG("ERROR: Couldn't allocate memory for compression data buffer.");
         goto memory_fail;
     }
+
+    /* Initialize running_checksum */
+    index->running_checksum=crc32(0L,Z_NULL,0);
 
     /* Initialize seeking data buffer. */
     seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
@@ -1525,19 +1533,9 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         }
     }
 
-    //If at the head of the list, just calculate checksum. Otherwise, combine your checksum with the checksum of the checkpoint before you
-    if(first_chkpt_flag)
-    {
-    	checkpoint->checksum=crc32(checkpoint->checksum,checkpoint->window_data,checkpoint->window_length);
-    }
-    else
-    {
-    	uint32_t indiv_checksum=crc32(0L,Z_NULL,0);
-    	indiv_checksum=crc32(indiv_checksum,checkpoint->window_data,checkpoint->window_length-1);
-    	checkpoint->checksum=crc32_combine(index->list[index->list_count-1].checksum,indiv_checksum,checkpoint->window_length-1);
+    /* Update checkpoint checksum */
+    checkpoint->checksum=index->running_checksum;
 
-
-    }
     /* Add new checkpoint.*/
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
     index->list_count++;
@@ -1561,11 +1559,6 @@ int zidx_get_checkpoint_list_len(zidx_index* index)
 		return ZX_ERR_PARAMS;
 	}
 	return index->list_count;
-}
-
-const char* win_dat(zidx_index* index,int idx)
-{
-	return index->list[idx].window_data;
 }
 
 uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
@@ -1949,7 +1942,7 @@ int zidx_import_ex(zidx_index *index,
     /* Read type of checksum. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 2, "the type of checksum");
 
-    ZX_READ_TEMPLATE_(&i32,4,"running checksum");
+    ZX_READ_TEMPLATE_(&index->running_checksum,4,"running checksum");
 
     /* Read checksum of the rest of header. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 4, "checksum of the header");
@@ -2201,7 +2194,7 @@ int zidx_export_ex(zidx_index *index,
     /* Write type of checksum. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 2, "the type of checksum");
 
-    ZX_WRITE_TEMPLATE_(&i32,4,"running checksum");
+    ZX_WRITE_TEMPLATE_(&index->running_checksum,4,"running checksum");
 
     /* Write checksum of the rest of header. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the header");
@@ -2220,7 +2213,7 @@ int zidx_export_ex(zidx_index *index,
 
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
-    ZX_WRITE_TEMPLATE_(&i32, 4, "checksum of the index");
+    ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");
 
     /* Number of indexed checkpoints. */
     i32 = index->list_count;
