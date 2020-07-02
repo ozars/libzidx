@@ -2310,6 +2310,81 @@ int zidx_export(zidx_index *index, streamlike_t *stream)
     return zidx_export_ex(index, stream, NULL, NULL);
 }
 
+/**
+ * Changes a single byte in the gzip file and updates corresponding fields in index
+ */
+int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
+{
+
+}
+/**
+ * Changes up to 32768 bytes in the gzip file. At most this change will affect 2 blocks.
+ */
+int zidx_small_modify(zidx_index *index, off_t offset, char *buffer, int length)
+{
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (buffer == NULL) {
+		ZX_LOG("ERROR: buffer is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (length < 0) {
+		ZX_LOG("ERROR: length can't be negative.");
+		return ZX_ERR_PARAMS;
+	}
+	else if(length>32768)
+	{
+		ZX_LOG("ERROR: length can't be > 32768.");
+		return ZX_ERR_PARAMS;
+	}
+
+	return ZX_ERR_NOT_IMPLEMENTED;
+}
+/**
+ * Wrapper for zidx_small_modify. For modifications greater than 32kb, break it up into 32kb chunks
+ */
+int zidx_modify(zidx_index *index, off_t offset, char *buffer, int length)
+{
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (buffer == NULL) {
+		ZX_LOG("ERROR: buffer is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (length < 0) {
+		ZX_LOG("ERROR: length can't be negative.");
+		return ZX_ERR_PARAMS;
+	}
+	else if (length==1)
+	{
+		ZX_LOG("Single byte change enabled");
+		return zidx_single_byte_modify(index,offset,buffer[0]);
+	}
+	else if(length<=32768)
+	{
+		return zidx_small_modify(index,offset,buffer,length);
+	}
+	else
+	{
+		int small_changes=length/32768;
+		int x;
+		for(x=0;x<small_changes;x++)
+		{
+			int ret=zidx_small_modify(index,offset,buffer+(x*32768),x==small_changes ? length%32768 : length/32768);
+			if(ret != ZX_RET_OK)
+			{
+				return ret;
+			}
+		}
+		return ZX_RET_OK;
+	}
+}
+
+
 #ifdef __cplusplus
 } // extern "C"
 #endif
