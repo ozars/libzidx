@@ -478,10 +478,9 @@ static int read_deflate_blocks(zidx_index* index,
         }
 
         /*Update index running checksum*/
-		//Byte array we're computing on starts at (zs_avail_out-comp_bytes_inflated) and is comp_bytes_inflated bytes long
-
-		index->running_checksum=crc32(index->running_checksum,zs->next_out-(index->offset.uncomp-last_offset),(index->offset.uncomp-last_offset));
-
+        //The amount of data we wrote in this pass of the loop is equal to the difference in offsets between last pass of the loop and this one
+        off_t offset_difference=index->offset.uncomp-last_offset;
+		index->running_checksum=crc32(index->running_checksum,zs->next_out-offset_difference,offset_difference);
 
         if (z_ret == Z_OK || z_ret == Z_STREAM_END)
         {
@@ -2310,12 +2309,105 @@ int zidx_export(zidx_index *index, streamlike_t *stream)
     return zidx_export_ex(index, stream, NULL, NULL);
 }
 
+int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint_idx)
+{
+	if(checkpoint_idx<0)
+	{
+		ZX_LOG("Error idx cannot be less than 0");
+		return ZX_ERR_PARAMS;
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	int idx=checkpoint_idx;
+	uint32_t new_block_checksum=new_checksum;
+	while(idx<index->list_count-1)
+	{
+		if(idx==0)
+		{
+			//TODO: Add error checking
+
+			index->list[idx].checksum=new_block_checksum;
+			idx++;
+		}
+		else
+		{
+			index->list[idx].checksum=crc32_combine(index->list[idx-1].checksum,index->list[idx].checksum,index->list[idx].window_length);
+		}
+	}
+	return ZX_RET_OK;
+}
+
 /**
  * Changes a single byte in the gzip file and updates corresponding fields in index
+ * Pseudocode process:
+ * Let offset be the position that we're changing.
+ * 1: Inflate existing comp_stream from offset to next block. Let this buf be called pre-change
+ * 2: Change byte according to the new_char param (call this post-change)
+ * 3: Deflate post-change to a now compressed buffer
+ * 4: Replace the contents of the comp_stream with the new compresse buffer.
+ * 5: Recompute checksums (ideally read previous block boundary running checksum, combine with post change, then update all checkpoints after offset. Issue: Getting previous block boundary checksum)
  */
 int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 {
+	const int length=16;//arbitrary length to read and write to
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (offset < 0) {
+		ZX_LOG("ERROR: offset (%jd) is negative.", (intmax_t)offset);
+		return ZX_ERR_PARAMS;
+	}
 
+	int s_read_len;
+
+	int s_ret;
+	int z_ret;
+	int zx_ret;
+	zidx_checkpoint *checkpoint;
+	int checkpoint_idx;
+
+	char temp_buf[length];
+	zx_ret = zidx_seek(index,offset);
+	if(zx_ret != ZX_RET_OK)
+	{
+		ZX_LOG("ERROR: Seeking to offset (%jd)",(intmax_t)offset);
+		return zx_ret;
+	}
+	zx_ret = zidx_read(index,temp_buf,length);
+
+	if(zx_ret !=ZX_RET_OK)
+	{
+		ZX_LOG("ERROR: Reading from offset (%jd)",(intmax_t)offset);
+		return zx_ret;
+	}
+
+	temp_buf[0]=new_char;
+
+	/*deflate and write to index*/
+
+	/*update checksum*/
+	uint32_t temp_buf_checksum=crc32(0L,Z_NULL,0);
+	temp_buf_checksum=crc32(temp_buf_checksum,temp_buf,length);
+	int idx=zidx_get_checkpoint_idx(index,offset);
+	if(idx<0)
+	{
+		//todo: write checking for above
+		return ZX_ERR_PARAMS;
+	}
+	zx_ret=zidx_update_checksums(index,temp_buf_checksum,idx); //this is not right, we need to get the whole block and update that then update the current checkpoint checksum
+	if(zx_ret!=ZX_RET_OK)
+	{
+		return zx_ret;
+	}
+
+
+
+
+	return ZX_RET_OK;
 }
 /**
  * Changes up to 32768 bytes in the gzip file. At most this change will affect 2 blocks.
@@ -2345,6 +2437,7 @@ int zidx_small_modify(zidx_index *index, off_t offset, char *buffer, int length)
 /**
  * Wrapper for zidx_small_modify. For modifications greater than 32kb, break it up into 32kb chunks
  */
+//todo: change 32768 to index->window_bits
 int zidx_modify(zidx_index *index, off_t offset, char *buffer, int length)
 {
 	if (index == NULL) {
