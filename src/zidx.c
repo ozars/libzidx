@@ -200,7 +200,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     int available_comp_bytes;
     int available_uncomp_bytes;
 
-    /* Number of bytes of compressed/uncompressed data consuemd/produced by
+    /* Number of bytes of compressed/uncompressed data consumed/produced by
      * inflate. */
     int comp_bytes_inflated;
     int uncomp_bytes_inflated;
@@ -1614,6 +1614,10 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
         ZX_LOG("ERROR: offset (%jd) is negative.", (intmax_t)offset);
         return ZX_ERR_PARAMS;
     }
+    if(offset>index->uncompressed_size)
+    {
+    	ZX_LOG("ERROR: offset (%jd) is larger than the size of the file (%jd)",(intmax_t) offset, (intmax_t)index->uncompressed_size);
+    }
 
     /* Return not found if list is empty. */
     if(index->list_count == 0) {
@@ -2325,10 +2329,9 @@ int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint
 	uint32_t new_block_checksum=new_checksum;
 	while(idx<index->list_count-1)
 	{
+		//TODO: Add error checking
 		if(idx==0)
 		{
-			//TODO: Add error checking
-
 			index->list[idx].checksum=new_block_checksum;
 			idx++;
 		}
@@ -2340,6 +2343,37 @@ int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint
 	return ZX_RET_OK;
 }
 
+int zidx_is_last_checkpoint(zidx_index *index, int idx)
+{
+	return index->list_count-1 == idx ? 1 : 0;
+}
+
+off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx)
+{
+	#define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
+	if(checkpoint_idx<0)
+	{
+		ZX_LOG("Error idx cannot be less than 0");
+		return ZX_ERR_PARAMS;
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	off_t ret=-1;
+	if(checkpoint_idx==0)
+	{
+		ret = ZX_OFFSET_(checkpoint_idx);
+	}
+	else
+	{
+		ret = ZX_OFFSET_(checkpoint_idx) - ZX_OFFSET_(checkpoint_idx-1);
+	}
+	#undef ZX_OFFSET_
+	return ret;
+}
+
 /**
  * Changes a single byte in the gzip file and updates corresponding fields in index
  * Pseudocode process:
@@ -2349,6 +2383,7 @@ int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint
  * 3: Deflate post-change to a now compressed buffer
  * 4: Replace the contents of the comp_stream with the new compresse buffer.
  * 5: Recompute checksums (ideally read previous block boundary running checksum, combine with post change, then update all checkpoints after offset. Issue: Getting previous block boundary checksum)
+ *  TODO: Add check for if the new_char is same as existing char
  */
 int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 {
@@ -2367,44 +2402,50 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	int s_ret;
 	int z_ret;
 	int zx_ret;
+
 	zidx_checkpoint *checkpoint;
 	int checkpoint_idx;
+	off_t block_length;
+	off_t inter_block_offset;
 
-	char temp_buf[length];
-	zx_ret = zidx_seek(index,offset);
-	if(zx_ret != ZX_RET_OK)
+
+	zidx_checkpoint *next_checkpoint;
+	int next_checkpoint_idx;
+
+
+	checkpoint_idx=zidx_get_checkpoint_idx(index,offset);
+	if(checkpoint_idx==ZX_ERR_NOT_FOUND)
 	{
-		ZX_LOG("ERROR: Seeking to offset (%jd)",(intmax_t)offset);
-		return zx_ret;
+		ZX_LOG("Error: was not able to find corresponding checkpoint for given offset (%jd)", (intmax_t)offset);
+		return ZX_ERR_NOT_FOUND;
 	}
-	zx_ret = zidx_read(index,temp_buf,length);
+	block_length=zidx_get_block_length(index,checkpoint_idx);
+	//todo: error check get block length
+	checkpoint = zidx_get_checkpoint(index,checkpoint_idx);
+	//todo: error check getting checkpoint
+	next_checkpoint_idx=zidx_is_last_checkpoint(index,checkpoint_idx) ? 0 : checkpoint_idx+1; //if at last checkpoint, there is no next checkpoint idx.
 
-	if(zx_ret !=ZX_RET_OK)
+	inter_block_offset = offset - checkpoint->offset.uncomp;
+
+	z_stream* zs=index->z_stream;
+
+	char write_buf[block_length];
+	zs->next_in=index->comp_data_buffer;
+	zs->next_out=(void *)write_buf;
+
+	zs->avail_in = index->comp_data_buffer_size;
+	zs->avail_out=block_length;
+
+	z_ret=inflate(zs,Z_BLOCK);//hopefully inflates one block? compare to inflate(zs,Z_SYNC_FLUSH);
+
+	write_buf[inter_block_offset]=new_char;
+
+	if(block_length - inter_block_offset <= 32768 &&
+			!zidx_is_last_checkpoint(index,checkpoint_idx))
 	{
-		ZX_LOG("ERROR: Reading from offset (%jd)",(intmax_t)offset);
-		return zx_ret;
+		next_checkpoint=zidx_get_checkpoint(index,next_checkpoint_idx);
+		//todo: error check get checkpoint
 	}
-
-	temp_buf[0]=new_char;
-
-	/*deflate and write to index*/
-
-	/*update checksum*/
-	uint32_t temp_buf_checksum=crc32(0L,Z_NULL,0);
-	temp_buf_checksum=crc32(temp_buf_checksum,temp_buf,length);
-	int idx=zidx_get_checkpoint_idx(index,offset);
-	if(idx<0)
-	{
-		//todo: write checking for above
-		return ZX_ERR_PARAMS;
-	}
-	zx_ret=zidx_update_checksums(index,temp_buf_checksum,idx); //this is not right, we need to get the whole block and update that then update the current checkpoint checksum
-	if(zx_ret!=ZX_RET_OK)
-	{
-		return zx_ret;
-	}
-
-
 
 
 	return ZX_RET_OK;
