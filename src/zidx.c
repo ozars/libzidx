@@ -2348,6 +2348,7 @@ int zidx_is_last_checkpoint(zidx_index *index, int idx)
 	return index->list_count-1 == idx ? 1 : 0;
 }
 
+
 off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx)
 {
 	#define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
@@ -2408,44 +2409,58 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	off_t block_length;
 	off_t inter_block_offset;
 
-
 	zidx_checkpoint *next_checkpoint;
 	int next_checkpoint_idx;
 
-
-	checkpoint_idx=zidx_get_checkpoint_idx(index,offset);
-	if(checkpoint_idx==ZX_ERR_NOT_FOUND)
+	if(offset<index->list[0].offset.uncomp) //case for if the offset is between start of file and first checkpoint
 	{
-		ZX_LOG("Error: was not able to find corresponding checkpoint for given offset (%jd)", (intmax_t)offset);
-		return ZX_ERR_NOT_FOUND;
+		ZX_LOG("Offset is between start of file and first checkpoint (Offset: %jd) (First checkpoint: %jd)",
+				(intmax_t)offset,
+				(intmax_t)index->list[0].offset.uncomp);
+		inter_block_offset=offset;
+		checkpoint_idx=-1;
+		block_length=index->list[0].offset.uncomp;
+
+		zidx_seek(index,0);
 	}
-	block_length=zidx_get_block_length(index,checkpoint_idx);
-	//todo: error check get block length
-	checkpoint = zidx_get_checkpoint(index,checkpoint_idx);
-	//todo: error check getting checkpoint
-	next_checkpoint_idx=zidx_is_last_checkpoint(index,checkpoint_idx) ? 0 : checkpoint_idx+1; //if at last checkpoint, there is no next checkpoint idx.
+	else
+	{
+		checkpoint_idx=zidx_get_checkpoint_idx(index,offset);
+		if(checkpoint_idx==ZX_ERR_NOT_FOUND)
+		{
+			ZX_LOG("Error: was not able to find corresponding checkpoint for given offset (%jd)", (intmax_t)offset);
+			return ZX_ERR_NOT_FOUND;
+		}
+		block_length=zidx_get_block_length(index,checkpoint_idx);
+		//todo: error check get block length
+		checkpoint = zidx_get_checkpoint(index,checkpoint_idx);
+		//todo: error check getting checkpoint
+		if(zidx_is_last_checkpoint(index,checkpoint_idx))
+		{
+			ZX_LOG("ERROR: This should be unreachable? Unless changing last byte in file?");
+			next_checkpoint_idx=0;
+		}
+		else
+		{
+			next_checkpoint_idx=checkpoint_idx+1;
+		}
 
-	inter_block_offset = offset - checkpoint->offset.uncomp;
 
-	z_stream* zs=index->z_stream;
+		inter_block_offset = offset - checkpoint->offset.uncomp;
+
+		z_stream* zs=index->z_stream;
+
+		zidx_seek(index,checkpoint->offset.uncomp);
+	}
 
 	char write_buf[block_length];
-	zs->next_in=index->comp_data_buffer;
-	zs->next_out=(void *)write_buf;
-
-	zs->avail_in = index->comp_data_buffer_size;
-	zs->avail_out=block_length;
-
-	z_ret=inflate(zs,Z_BLOCK);//hopefully inflates one block? compare to inflate(zs,Z_SYNC_FLUSH);
+	char old_char=write_buf[inter_block_offset];
+	ZX_LOG("Writing entire block to buffer");
+	zidx_read(index,(uint8_t*) write_buf, block_length);
 
 	write_buf[inter_block_offset]=new_char;
+	ZX_LOG("Changed byte (%x) to (%x)",old_char,new_char);
 
-	if(block_length - inter_block_offset <= 32768 &&
-			!zidx_is_last_checkpoint(index,checkpoint_idx))
-	{
-		next_checkpoint=zidx_get_checkpoint(index,next_checkpoint_idx);
-		//todo: error check get checkpoint
-	}
 
 
 	return ZX_RET_OK;
