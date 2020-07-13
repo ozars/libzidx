@@ -67,6 +67,7 @@ struct zidx_index_s
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
     char inflate_initialized;
+    char deflate_initialized;
     off_t compressed_size;
     off_t uncompressed_size;
 };
@@ -317,6 +318,63 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
     }
     return z_ret;
 }
+
+/**
+ * Initialize zs using deflateInit2() if this is first time. Otherwise use
+ * deflateReset2().
+ *
+ * \param index       Index data.
+ * \param zs          zlib stream data.
+ * \param window_bits Parameter to pass as a second argument to
+ *                    deflateInit2() or deflateReset2()
+ *
+ * \return The return value of deflateInit2() or deflateReset2().
+ *
+ * */
+static int initialize_deflate(zidx_index* index, int window_bits)
+{
+    int z_ret;
+    z_stream *zs=index->z_stream;
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.");
+        return ZX_ERR_PARAMS;
+    }
+    if (zs == NULL) {
+        ZX_LOG("ERROR: z_stream argument zs is NULL.");
+        return ZX_ERR_PARAMS;
+    }
+
+    if (!index->deflate_initialized) {
+    	//Param list for deflateInit2:
+    	// zs -> z_stream
+    	// 9 -> level of compression (0-9)
+    	// Z_DEFLATED -> required in current version of zlib
+    	// window_bits -> user provided. Must add 16 for gzip compression
+    	// 9 -> memory usage level (0-9)
+    	// Z_DEFAULT STRATEGY -> best choice for general use data
+
+    	zs->zalloc=Z_NULL;
+    	zs->zfree=Z_NULL;
+    	zs->opaque=Z_NULL;
+        z_ret = deflateInit2(zs, 9, Z_DEFLATED, window_bits, 9, Z_DEFAULT_STRATEGY);
+        if (z_ret == Z_OK) {
+            index->deflate_initialized = 1;
+            ZX_LOG("Initialized deflate successfully.");
+        } else {
+            ZX_LOG("ERROR: deflateInit2 returned error (%d).", z_ret);
+        }
+    } else {
+        z_ret = deflateReset(zs);
+        if (z_ret == Z_OK) {
+            ZX_LOG("Reset deflate successfully.");
+        } else {
+            ZX_LOG("ERROR: deflateReset returned error (%d).", z_ret);
+        }
+    }
+    return z_ret;
+}
+
 
 /**
  * Read headers of a gzip or zlib file.
@@ -761,6 +819,7 @@ int zidx_index_init_ex(zidx_index *index,
     index->stream_type         = stream_type;
     index->stream_state        = ZX_STATE_FILE_HEADERS;
     index->inflate_initialized = 0;
+    index->deflate_initialized = 0;
 
     /* Set checksum option. */
     index->checksum_option = checksum_option;
@@ -823,14 +882,24 @@ int zidx_index_destroy(zidx_index* index)
     ret = ZX_RET_OK;
 
     /* Since z_stream is not NULL, release internal buffers of z_stream. */
-    if (index->inflate_initialized) {
-        z_ret = inflateEnd(index->z_stream);
+    if (index->inflate_initialized) { //TODO: Add check here to see if in deflate initialized mode or inflate initialized mode and shut down appropriately
+        z_ret = inflateEnd(index->z_stream); //more intelligently, probably just do inflate end from deflate init and deflate end in inflate init
         if (z_ret != Z_OK) {
             ZX_LOG("ERROR: inflateEnd returned error (%d).", z_ret);
             ret = ZX_ERR_ZLIB(z_ret);
         }
     }
-    /* If internal buffers are released succesfully, release the z_stream
+
+    if (index->deflate_initialized)
+    {
+    	z_ret=deflateEnd(index->z_stream);
+    	if (z_ret != Z_OK) {
+			ZX_LOG("ERROR: deflateEnd returned error (%d).", z_ret);
+			ret = ZX_ERR_ZLIB(z_ret);
+		}
+    }
+
+    /* If internal buffers are released successfully, release the z_stream
      * itself. */
     if (ret == ZX_RET_OK) {
         free(index->z_stream);
@@ -2315,7 +2384,7 @@ int zidx_export(zidx_index *index, streamlike_t *stream)
 
 int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint_idx)
 {
-	if(checkpoint_idx<0)
+	if(checkpoint_idx<-1)
 	{
 		ZX_LOG("Error idx cannot be less than 0");
 		return ZX_ERR_PARAMS;
@@ -2327,18 +2396,20 @@ int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint
 	}
 	int idx=checkpoint_idx;
 	uint32_t new_block_checksum=new_checksum;
-	while(idx<index->list_count-1)
+	while(idx<index->list_count-2)
 	{
 		//TODO: Add error checking
-		if(idx==0)
+		if(idx==-1)
 		{
-			index->list[idx].checksum=new_block_checksum;
+			index->list[0].checksum=new_block_checksum;
 			idx++;
 		}
+		//TODO: add case for last checksum in the list
 		else
 		{
-			index->list[idx].checksum=crc32_combine(index->list[idx-1].checksum,index->list[idx].checksum,index->list[idx].window_length);
+			index->list[idx+1].checksum=crc32_combine(index->list[idx].checksum,index->list[idx+1].checksum,index->list[idx+1].window_length);
 		}
+		idx++;
 	}
 	return ZX_RET_OK;
 }
@@ -2349,9 +2420,11 @@ int zidx_is_last_checkpoint(zidx_index *index, int idx)
 }
 
 
-off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx)
+off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx,int comp_flag)
 {
 	#define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
+	#define ZX_COMP_OFFSET_(idx) (index->list[idx].offset.comp)
+
 	if(checkpoint_idx<0)
 	{
 		ZX_LOG("Error idx cannot be less than 0");
@@ -2369,12 +2442,49 @@ off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx)
 	}
 	else
 	{
-		ret = ZX_OFFSET_(checkpoint_idx) - ZX_OFFSET_(checkpoint_idx-1);
+		if(!comp_flag)
+		{
+			ret = ZX_OFFSET_(checkpoint_idx) - ZX_OFFSET_(checkpoint_idx-1);
+		}
+		else
+		{
+			ret = ZX_COMP_OFFSET_(checkpoint_idx) - ZX_COMP_OFFSET_(checkpoint_idx-1);
+		}
 	}
 	#undef ZX_OFFSET_
 	return ret;
 }
 
+int zidx_deflate_wrapper(zidx_index *index,void* input, int input_size, void* output, int output_size, int window_bits)
+{
+	z_stream* zs=index->z_stream;
+
+	zs->avail_in =input_size;
+	zs->next_in  =input;
+	zs->avail_out=output_size;
+	zs->next_out =output;
+
+	if(!index->deflate_initialized)
+	{
+		ZX_LOG("ERROR: Deflate was not initialized before calling this method (see initialize_deflate).");
+		return ZX_ERR_INVALID_OP;
+	}
+	int z_ret;
+	z_ret=deflate(zs,Z_FINISH);
+	if(z_ret!=Z_OK && z_ret!=Z_STREAM_END)
+	{
+		ZX_LOG("Error deflating (%d)",z_ret);
+		return z_ret;
+	}
+	z_ret=deflateEnd(zs);
+	if(z_ret!=Z_OK)
+	{
+		ZX_LOG("Error ending deflate (%d)",z_ret);
+		return z_ret;
+	}
+	ZX_LOG("Deflated correctly to buffer, wrote %lu bytes",(unsigned long)zs->total_out);
+	return zs->total_out;
+}
 /**
  * Changes a single byte in the gzip file and updates corresponding fields in index
  * Pseudocode process:
@@ -2407,6 +2517,7 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	zidx_checkpoint *checkpoint;
 	int checkpoint_idx;
 	off_t block_length;
+	off_t comp_block_length;
 	off_t inter_block_offset;
 
 	zidx_checkpoint *next_checkpoint;
@@ -2420,8 +2531,8 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 		inter_block_offset=offset;
 		checkpoint_idx=-1;
 		block_length=index->list[0].offset.uncomp;
-
-		zidx_seek(index,0);
+		comp_block_length=index->list[0].offset.comp;
+		zidx_rewind(index);
 	}
 	else
 	{
@@ -2431,7 +2542,8 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 			ZX_LOG("Error: was not able to find corresponding checkpoint for given offset (%jd)", (intmax_t)offset);
 			return ZX_ERR_NOT_FOUND;
 		}
-		block_length=zidx_get_block_length(index,checkpoint_idx);
+		block_length=zidx_get_block_length(index,checkpoint_idx,0);
+		comp_block_length=zidx_get_block_length(index,checkpoint_idx,1);
 		//todo: error check get block length
 		checkpoint = zidx_get_checkpoint(index,checkpoint_idx);
 		//todo: error check getting checkpoint
@@ -2445,7 +2557,6 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 			next_checkpoint_idx=checkpoint_idx+1;
 		}
 
-
 		inter_block_offset = offset - checkpoint->offset.uncomp;
 
 		z_stream* zs=index->z_stream;
@@ -2454,15 +2565,69 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	}
 
 	char write_buf[block_length];
-	char old_char=write_buf[inter_block_offset];
+	char def_buf[block_length];
+
 	ZX_LOG("Writing entire block to buffer");
 	zidx_read(index,(uint8_t*) write_buf, block_length);
 
 	write_buf[inter_block_offset]=new_char;
-	ZX_LOG("Changed byte (%x) to (%x)",old_char,new_char);
+	ZX_LOG("Changed byte at offset (%jd) to (%c)",(intmax_t) offset,new_char);
 
+	int wb=index->window_bits;
+	if(index->stream_type==ZX_STREAM_GZIP || index->stream_type==ZX_STREAM_GZIP_OR_ZLIB)
+	{
+		wb+=16;
+	}
+	else
+	{
+		//Case for when stream type is raw deflate
+		wb*=-1;
+	}
+	z_ret=initialize_deflate(index,wb);
+	if (z_ret != Z_OK) {
+		ZX_LOG("ERROR: deflate initialization returned error (%d).",z_ret);
+		return ZX_ERR_ZLIB(z_ret);
+	}
 
+	if(checkpoint_idx!=-1) //if you're in any block besides the first, set the corresponding checkpoint dictionary to that of the output of deflate.
+	{
+		z_ret=deflateSetDictionary(index->z_stream,checkpoint->window_data,checkpoint->window_length);
+		if(z_ret!=Z_OK)
+		{
+			return ZX_ERR_ZLIB(z_ret);
+		}
 
+	}
+
+	z_ret=zidx_deflate_wrapper(index, write_buf, block_length, def_buf, block_length,wb);
+
+	if(z_ret<0)
+	{
+		ZX_LOG("ERROR: while calling deflate wrapper from single byte modify (%d)",z_ret);
+	}
+	if(z_ret!=comp_block_length)
+	{
+		ZX_LOG("ERROR: Modified block compressed to a different length than original (%lu to %d). Not supported.",(unsigned long)comp_block_length,z_ret);
+		return ZX_ERR_NOT_IMPLEMENTED;
+	}
+
+	if(checkpoint_idx==-1)
+	{
+		memcpy(index->comp_data_buffer,def_buf,z_ret);
+	}
+	else
+	{
+		memcpy(index->comp_data_buffer + checkpoint->offset.uncomp,def_buf,z_ret);
+	}
+	ZX_LOG("Wrote modified buffer to file");
+
+	zx_ret=zidx_update_checksums(index,index->z_stream->adler,checkpoint_idx);
+	if(zx_ret!=Z_OK)
+	{
+		ZX_LOG("ERROR: Found in updating checksums (%d)",z_ret);
+		return z_ret;
+	}
+	ZX_LOG("Updated checksums");
 	return ZX_RET_OK;
 }
 /**
