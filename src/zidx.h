@@ -233,6 +233,7 @@ int zidx_import(zidx_index *index, streamlike_t *stream);
 int zidx_export(zidx_index *index, streamlike_t* output_index_file);
 
 /* index modification functions */
+off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx,int comp_flag);
 int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint_idx);
 int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char);
 int zidx_small_modify(zidx_index *index, off_t offset, char *buffer, int length);

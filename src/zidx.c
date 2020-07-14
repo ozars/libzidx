@@ -249,7 +249,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     index->offset.uncomp += uncomp_bytes_inflated;
 
     /* Set bit offsets only if we are in block boundary. */
-    /* TODO: Truncating if not in block boundary is probably unnecessary. May
+    /* TODO: Truncating if not in block boundary is probably unnecessary. May0
      * be removed in future. */
     if (is_on_block_boundary(zs)) {
         index->offset.comp_bits_count = get_unused_bits_count(zs);
