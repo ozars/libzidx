@@ -310,7 +310,7 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
     	}
     	else
     	{
-    		index->deflate_initialize=0;
+    		index->deflate_initialized=0;
     	}
     }
 
@@ -369,7 +369,7 @@ static int initialize_deflate(zidx_index* index, int window_bits)
         	}
         	else
         	{
-        		index->inflate_initialize=0;
+        		index->inflate_initialized=0;
         	}
         }
     if (!index->deflate_initialized) {
@@ -2527,15 +2527,16 @@ int zidx_deflate_wrapper(zidx_index *index,void* input, int input_size, void* ou
 /**
  * For use in modification methods. Moves around the blocks in the compressed stream held by index such that they remain consecutive after modification
  * Pseudocode process:
- * Let new_comp_offset be the new compressed ending offset for the block recorded at checkpoint_idx, such that it represents the new end point of the block.
- * 1: Compute shift_amount as the difference between new_comop_offset and the existing comp offset from index->list[checkpoint_idx+1] //important note: shift amount can be positive (grows after compression) or negative (shrinks after compression)
+ *
+ * 1: Compute shift_amount as the difference between new_comp_offset and the existing comp offset from index->list[checkpoint_idx+1] //important note: shift amount can be positive (grows after compression) or negative (shrinks after compression)
  * 		1a: if checkpoint_idx is -1, then it's the first block that has no corresponding checkpoint. Therefore, just update all the checkpoints in the file.
  * 2: Copy the entire comp stream after the new offset to a buffer (would it be better to do this by checkpoints?)
  * 3: Paste the buffer so the start is immediately after new_offset.
  * 4: For each checkpoint after checkpoint_idx, update offset.comp to be offset.comp+shift_amount //note: don't need to update offset.uncomp since we only replace and don't delete chars. Chars are still there
  * 5: Update related size fields in index (i think just window_length and index->compressed_size?)
  */
-int zidx_index_shuffle(zidx_index *index, off_t new_comp_offset, int checkpoint_idx)
+//zx_ret=zidx_write_to_comp_stream(index,checkpoint_idx,def_buf,z_ret);
+int zidx_write_to_comp_stream(zidx_index *index, int checkpoint_idx, void* buf, off_t buf_len)
 {
 	off_t shamt=0;
 	int s_ret;
@@ -2550,36 +2551,44 @@ int zidx_index_shuffle(zidx_index *index, off_t new_comp_offset, int checkpoint_
 	}
 	if(zidx_is_last_checkpoint(index,checkpoint_idx+1))
 	{
-		//just update checkpoint->offset.comp, no need to write
+		//just update checkpoint->offset.comp and comp size in index and write buf as is
+
 	}
 	else
 	{
+		//copy out everything from checkpoint->offset.comp+buf_len to eof to a move_buf, then write buf to comp stream, then write move_buf after that
+		zidx_checkpoint* start_checkpoint=zidx_get_checkpoint(index,checkpoint_idx);
 		zidx_checkpoint* end_checkpoint=zidx_get_checkpoint(index,checkpoint_idx+1);
 			//error check
-		old_comp_offset=end_checkpoint->offset.comp;
-		if(new_comp_offset==old_comp_offset)
+		off_t new_block_boundary=start_checkpoint->offset.comp;
+		off_t old_block_boundary =end_checkpoint->offset.comp;
+
+		if(new_block_boundary==old_block_boundary)
 		{
-			ZX_LOG("Warning: new offset and old offset match, no action taken.");
-			return ZX_RET_OK;
+			ZX_LOG("Warning: new offset and old offset match, writing directly.");
+			//TODO: write buf into place here, without rearranging
+
 		}
 
-		shamt=new_offset-old_comp_offset;
+		shamt=new_block_boundary-old_block_boundary;
 
-		s_ret=sl_seek(index->comp_stream,old_comp_offset,SL_SEEK_SET); //ask omer about the sl_seek_set flag
+		s_ret=sl_seek(index->comp_stream,old_block_boundary,SL_SEEK_SET); //ask omer about the sl_seek_set flag
 		if (s_ret != 0)
 		{
 			ZX_LOG("ERROR: Couldn't seek in stream (%d).", s_ret);
 			return ZX_ERR_STREAM_SEEK;
 		}
 
-		off_t old_offset_to_eof=index->compressed_size-old_offset;
-		uint8_t* buf;
+		off_t old_offset_to_eof=index->compressed_size-old_block_boundary;
+		uint8_t* move_buf;
 
-		s_ret=sl_read(index->comp_stream,buf,old_offset_to_eof);
+		s_ret=sl_read(index->comp_stream,move_buf,old_offset_to_eof);
 		//todo check the read
 
+		s_ret=sl_seek(index->comp_stream,start_checkpoint->offset.comp,SL_SEEK_SET);
+		s_ret=sl_write(index->comp_stream,buf,buf_len);
 		s_ret=sl_seek(index->comp_stream,new_comp_offset,SL_SEEK_SET);
-		s_ret=sl_write(index->comp_stream,buf,old_offset_to_eof);
+		s_ret=sl_write(index->comp_stream,move_buf,old_offset_to_eof);
 
 		//update the total size of the compressed contents
 		index->compresed_size+=shamt;
@@ -2675,7 +2684,7 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 
 		z_stream* zs=index->z_stream;
 
-		zidx_seek(index,checkpoint->offset.uncomp,SL_SEEK_SET); //todo: error check with s_ret
+		zidx_seek(index,checkpoint->offset.uncomp); //todo: error check with zx_ret
 	}
 
 	char write_buf[block_length];
@@ -2707,6 +2716,7 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 		return ZX_ERR_ZLIB(z_ret);
 	}
 
+	//update checkpoint dictionary
 	if(checkpoint_idx!=-1) //if you're in any block besides the first, set the corresponding checkpoint dictionary to that of the output of deflate.
 	{
 		z_ret=deflateSetDictionary(index->z_stream,checkpoint->window_data,checkpoint->window_length);
@@ -2723,25 +2733,14 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	{
 		ZX_LOG("ERROR: while calling deflate wrapper from single byte modify (%d)",z_ret);
 	}
-	if(z_ret!=comp_block_length)
+	zx_ret=zidx_write_to_comp_stream(index,checkpoint_idx,def_buf,z_ret);
+	if(zx_ret!=ZX_RET_OK)
 	{
-		zx_ret=zidx_index_shuffle(index,comp_block_start+comp_block_length,checkpoint_idx);
-		if(zx_ret!=ZX_RET_OK)
-		{
-			ZX_LOG("Error in shuffle function (%d)",zx_ret);
-			return zx_ret;
-		}
+		ZX_LOG("Error in shuffle function (%d)",zx_ret);
+		return zx_ret;
 	}
 
-	//todo: replace with sl_reads
-	if(checkpoint_idx==-1)
-	{
 
-	}
-	else
-	{
-
-	}
 	ZX_LOG("Wrote modified buffer to file");
 	//todo: if in last 32kb, recompute next block too
 
@@ -2796,6 +2795,11 @@ int zidx_modify(zidx_index *index, off_t offset, char *buffer, int length)
 	}
 	if (length < 0) {
 		ZX_LOG("ERROR: length can't be negative.");
+		return ZX_ERR_PARAMS;
+	}
+	if(index->comp_stream->write==NULL)
+	{
+		ZX_LOG("ERROR: Cannot write to stream. ");
 		return ZX_ERR_PARAMS;
 	}
 	else if (length==1)
