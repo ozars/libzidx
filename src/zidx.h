@@ -69,7 +69,7 @@ extern "C" {
                                   structure. */
 #define ZX_ERR_NOT_IMPLEMENTED (-10)       /**< Feature is not implemented. */
 #define ZX_ERR_ZLIB(err)       (-64 + err) /**< Error caused by zlib. */
-
+#define ZX_ERR_STREAM_WRITE (-11)
 /** @} */
 
 /**
@@ -200,6 +200,7 @@ uint32_t zidx_get_checkpoint_checksum(zidx_index* index,int idx);
 uint32_t zidx_get_last_checksum(zidx_index* index);
 
 off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
+off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp);
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result);
 
