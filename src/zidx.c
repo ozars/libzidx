@@ -1631,7 +1631,7 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
 
     /* Update checkpoint checksum */
     checkpoint->checksum=index->running_checksum;
-
+    index->running_checksum=crc32(0L,Z_NULL,0);
     /* Add new checkpoint.*/
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
     index->list_count++;
@@ -1677,14 +1677,27 @@ uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
 	return index->list[idx].checksum;
 }
 
-uint32_t zidx_get_last_checksum(zidx_index* index)
+uint32_t zidx_get_checksum(zidx_index* index)
 {
 	if(index==NULL)
 	{
 		ZX_LOG("ERROR: index is null.");
 		return ZX_ERR_PARAMS;
 	}
-	return zidx_get_checkpoint_checksum(index,index->list_count-1);
+	uint32_t ret=crc32(0L,Z_NULL,0);
+	int x;
+	off_t start=0;
+	off_t end=0;
+	for(x=0;x<index->list_count;x++)
+	{
+		if(x>0)
+		{
+			start=index->list[x-1].offset.uncomp;
+		}
+		end=index->list[x].offset.uncomp;
+		ret=crc32_combine(ret,index->list[x].checksum,end-start);
+	}
+	return ret;
 }
 
 int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
@@ -1799,7 +1812,6 @@ off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp)
 {
 	return ckp->offset.comp;
 }
-
 
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result)
@@ -2420,11 +2432,8 @@ int zidx_export(zidx_index *index, streamlike_t *stream)
  * Updates checksums after the given checkpoint_idx
  * checkpoint_idx can be -1	 in the case that the modified block was after the start of the file and before the first checkpoint.
  */
-int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint_idx)
+int zidx_update_checksum(zidx_index *index,uint32_t new_checksum,int checkpoint_idx)
 {
-	#define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
-	#define ZX_CHECKSUM_(idx)(index->list[idx].checksum)
-
 	if(checkpoint_idx+1<0 || checkpoint_idx+1>index->list_count)
 	{
 		ZX_LOG("Error idx out of bounds");
@@ -2436,27 +2445,7 @@ int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint
 		return ZX_ERR_PARAMS;
 	}
 	int idx=checkpoint_idx+1;//shift over to end checkpoint instead of start checkpoint
-	if(idx==0)
-	{
-		index->list[0]->checksum=new_checksum;
-		idx++;
-	}
-	else if(idx==index->list_count-1)
-	{
-		off_t block_length=ZX_OFFSET_(idx)-ZX_OFFSET_(idx-1);
-		index->list[idx]->checksum=crc32_combine(ZX_CHECKSUM_(idx-1),new_checksum,block_length);
-		return ZX_RET_OK;
-	}
-	while(idx<index->list_count-2)
-	{
-		off_t next_block_len=0;
-		off_t curr_block_len;
-		uint32_t next_checksum=crc32_extract(ZX_CHECKSUM_(idx),ZX_CHECKSUM_(idx+1));
-	}
-
-	#undef ZX_OFFSET_
-	#undef ZX_CHECKSUM_
-	return ZX_RET_OK;
+	index->list[idx].checksum=new_checksum;
 }
 
 int zidx_is_last_checkpoint(zidx_index *index, int idx)
@@ -2840,7 +2829,7 @@ int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
 	//todo: if in last 32kb, recompute next block too
 
 	//update checksums
-	zx_ret=zidx_update_checksums(index,index->z_stream->adler,checkpoint_idx); //z_stream->adler returns crc32 checksum in the event of a gzip decompression
+	zx_ret=zidx_update_checksum(index,index->z_stream->adler,checkpoint_idx); //z_stream->adler returns crc32 checksum in the event of a gzip decompression
 	if(zx_ret!=Z_OK)
 	{
 		ZX_LOG("ERROR: Found in updating checksums (%d)",z_ret);

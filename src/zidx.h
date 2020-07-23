@@ -197,13 +197,12 @@ int zidx_checkpoint_count(zidx_index* index);
 
 int zidx_get_checkpoint_list_len(zidx_index* index);
 uint32_t zidx_get_checkpoint_checksum(zidx_index* index,int idx);
-uint32_t zidx_get_last_checksum(zidx_index* index);
+uint32_t zidx_get_checksum(zidx_index* index);
 
 off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
 off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp);
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result);
-
 int zidx_extend_index_size(zidx_index* index, int nmembers);
 int zidx_shrink_index_size(zidx_index* index, int nmembers);
 int zidx_fit_index_size(zidx_index* index);
