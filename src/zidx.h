@@ -203,6 +203,9 @@ off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
 off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp);
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result);
+uint8_t zidx_get_checkpoint_byte(const zidx_checkpoint* chkp);
+uint8_t zidx_get_checkpoint_bit_count(const zidx_checkpoint* chkp);
+
 int zidx_extend_index_size(zidx_index* index, int nmembers);
 int zidx_shrink_index_size(zidx_index* index, int nmembers);
 int zidx_fit_index_size(zidx_index* index);
