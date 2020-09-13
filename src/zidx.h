@@ -69,7 +69,7 @@ extern "C" {
                                   structure. */
 #define ZX_ERR_NOT_IMPLEMENTED (-10)       /**< Feature is not implemented. */
 #define ZX_ERR_ZLIB(err)       (-64 + err) /**< Error caused by zlib. */
-
+#define ZX_ERR_STREAM_WRITE (-11)
 /** @} */
 
 /**
@@ -185,6 +185,7 @@ int zidx_build_index_ex(zidx_index* index,
                         void *callback_context);
 
 zidx_checkpoint* zidx_create_checkpoint();
+
 int zidx_fill_checkpoint(zidx_index* index,
                          zidx_checkpoint* new_checkpoint,
                          zidx_checkpoint_offset* offset);
@@ -193,9 +194,17 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset);
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx);
 int zidx_checkpoint_count(zidx_index* index);
 /* TODO: Consider dropping consts before release. */
+
+int zidx_get_checkpoint_list_len(zidx_index* index);
+uint32_t zidx_get_checkpoint_checksum(zidx_index* index,int idx);
+uint32_t zidx_get_checksum(zidx_index* index);
+
 off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp);
+off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp);
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result);
+uint8_t zidx_get_checkpoint_byte(const zidx_checkpoint* chkp);
+uint8_t zidx_get_checkpoint_bit_count(const zidx_checkpoint* chkp);
 
 int zidx_extend_index_size(zidx_index* index, int nmembers);
 int zidx_shrink_index_size(zidx_index* index, int nmembers);
@@ -225,6 +234,14 @@ int zidx_export_ex(zidx_index *index,
 
 int zidx_import(zidx_index *index, streamlike_t *stream);
 int zidx_export(zidx_index *index, streamlike_t* output_index_file);
+
+/* index modification functions */
+int zidx_clear_hanging_byte(zidx_index *index, int checkpoint_idx);
+off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx,int comp_flag);
+int zidx_update_checksums(zidx_index *index,uint32_t new_checksum,int checkpoint_idx);
+int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char);
+int zidx_small_modify(zidx_index *index, off_t offset, char *buffer, int length);
+int zidx_modify(zidx_index *index, off_t offset, char *buffer, int length);
 
 #ifdef __cplusplus
 } // extern "C"

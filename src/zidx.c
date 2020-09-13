@@ -4,6 +4,7 @@
 #include <string.h>
 #include <zlib.h>
 #include <streamlike.h>
+#include <streamlike/file.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,7 @@ struct zidx_index_s
     int list_count;
     int list_capacity;
     zidx_checkpoint *list;
+    uint32_t running_checksum;
     zidx_checksum_option checksum_option;
     unsigned int window_size;
     int window_bits;
@@ -66,9 +68,70 @@ struct zidx_index_s
     uint8_t *seeking_data_buffer;
     int seeking_data_buffer_size;
     char inflate_initialized;
+    char deflate_initialized;
     off_t compressed_size;
     off_t uncompressed_size;
 };
+
+/**
+ * Returns the combined crc32 checksum from two crc checksums.
+ *
+ * This function is used as a helper function for updating checksums of modified blocks in file
+ *
+ * \param crc1 First crc checksum
+ * \param crc2 Second crc checksum
+ * \param len2 Length of the second sequence of data (not the length of the checksum, but the length of the data the checksum was computed from)
+ *
+ * \return The combined crc32 checksum of the input checksums
+ *
+ * TODO: Update for 32 bit return instead of 64 bit.
+ */
+unsigned long crc32_combine(uLong crc1,uLong crc2,z_off_t len2)
+{
+
+	Bytef *c=calloc(0,sizeof(char)*len2);
+	if(!c)
+	{
+		free(c);
+		return ZX_ERR_MEMORY;
+	}
+	unsigned long crc_ret=crc32(crc1,c,len2);
+
+	unsigned long crc_ret_2=crc32(0L,Z_NULL,0);
+	crc_ret_2=crc32(crc_ret_2,c,len2);
+
+	free(c);
+	return crc_ret ^ crc2 ^ crc_ret_2;
+}
+
+/**
+ * Given a crc checksum and a combined checksum, returns the extracted checksum from the combined checksum.
+ * For example, given data segments A and B, and their respective checksums chk_A, chk_B, create a combined checksum of blocks A and B called chk_AB.
+ * Extract function returns chk_B given chk_A and chk_AB.
+ *
+ * This function is used as a helper function for updating checksums of modified blocks in file
+ *
+ * \param crc1 First crc checksum
+ * \param crc2 Second crc checksum. Combined checksum of crc1 and the checksum of another block of data
+ * \param len2 Length of the second block of data (not the length of the checksum but of the data)
+ * \return The extracted checksum of the second block of data from a combined checksum.
+ */
+unsigned long crc32_extract(uLong crc1,uLong crc2,z_off_t len2)
+{
+	Bytef *c=calloc(0,sizeof(char)*len2);
+
+	if(!c)
+	{
+			free(c);
+			return ZX_ERR_MEMORY;
+	}
+	unsigned long crc_ret=crc32(0L,Z_NULL,0);
+	crc_ret=crc32(crc_ret,c,len2);
+
+	unsigned long crc_ret_2=crc32(crc1,c,len2);
+	free(c);
+	return crc2 ^ crc_ret ^ crc_ret_2;
+}
 
 /**
  * Return number of unused bits count in the last byte consumed by inflate().
@@ -139,7 +202,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     int available_comp_bytes;
     int available_uncomp_bytes;
 
-    /* Number of bytes of compressed/uncompressed data consuemd/produced by
+    /* Number of bytes of compressed/uncompressed data consumed/produced by
      * inflate. */
     int comp_bytes_inflated;
     int uncomp_bytes_inflated;
@@ -179,12 +242,15 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
     comp_bytes_inflated   = available_comp_bytes - zs->avail_in;
     uncomp_bytes_inflated = available_uncomp_bytes - zs->avail_out;
 
+
+
+
     /* Update byte offsets. */
     index->offset.comp   += comp_bytes_inflated;
     index->offset.uncomp += uncomp_bytes_inflated;
 
     /* Set bit offsets only if we are in block boundary. */
-    /* TODO: Truncating if not in block boundary is probably unnecessary. May
+    /* TODO: Truncating if not in block boundary is probably unnecessary. May0
      * be removed in future. */
     if (is_on_block_boundary(zs)) {
         index->offset.comp_bits_count = get_unused_bits_count(zs);
@@ -218,7 +284,7 @@ static int inflate_and_update_offset(zidx_index* index, z_stream* zs,
  *
  * \return The return value of inflateInit2() or inflateReset2().
  *
- * \todo  It is reduntant to pass zs, as it should be same with
+ * \todo  It is redundant to pass zs, as it should be same with
  *        index->z_stream. Consider removing second argument.
  * */
 static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
@@ -233,6 +299,20 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
     if (zs == NULL) {
         ZX_LOG("ERROR: z_stream argument zs is NULL.");
         return ZX_ERR_PARAMS;
+    }
+    if(index->deflate_initialized)
+    {
+    	ZX_LOG("Warning: Deflate stream was detected as initialized. Calling deflateEnd");
+    	z_ret=deflateEnd(zs);
+    	if(z_ret!=Z_OK)
+    	{
+    		ZX_LOG("ERROR: Closing already-opened deflate stream");
+    		return z_ret;
+    	}
+    	else
+    	{
+    		index->deflate_initialized=0;
+    	}
     }
 
     if (!index->inflate_initialized) {
@@ -253,6 +333,76 @@ static int initialize_inflate(zidx_index* index, z_stream* zs, int window_bits)
     }
     return z_ret;
 }
+
+/**
+ * Initialize zs using deflateInit2() if this is first time. Otherwise use
+ * deflateReset2().
+ *
+ * \param index       Index data.
+ * \param zs          zlib stream data.
+ * \param window_bits Parameter to pass as a second argument to
+ *                    deflateInit2() or deflateReset2()
+ *
+ * \return The return value of deflateInit2() or deflateReset2().
+ *
+ * */
+static int initialize_deflate(zidx_index* index, int window_bits)
+{
+    int z_ret;
+    z_stream *zs=index->z_stream;
+    /* Sanity checks. */
+    if (index == NULL) {
+        ZX_LOG("ERROR: index is NULL.");
+        return ZX_ERR_PARAMS;
+    }
+    if (zs == NULL) {
+        ZX_LOG("ERROR: z_stream argument zs is NULL.");
+        return ZX_ERR_PARAMS;
+    }
+    if(index->inflate_initialized)
+        {
+        	ZX_LOG("Warning: Inflate stream was detected as initialized. Calling inflateEnd");
+        	z_ret=inflateEnd(zs);
+        	if(z_ret!=Z_OK)
+        	{
+        		ZX_LOG("ERROR: Closing already-opened inflate stream");
+        		return z_ret;
+        	}
+        	else
+        	{
+        		index->inflate_initialized=0;
+        	}
+        }
+    if (!index->deflate_initialized) {
+    	//Param list for deflateInit2:
+    	// zs -> z_stream
+    	// 9 -> level of compression (0-9)
+    	// Z_DEFLATED -> required in current version of zlib
+    	// window_bits -> user provided. Must add 16 for gzip compression
+    	// 9 -> memory usage level (0-9)
+    	// Z_DEFAULT STRATEGY -> best choice for general use data
+
+    	zs->zalloc=Z_NULL;
+    	zs->zfree=Z_NULL;
+    	zs->opaque=Z_NULL;
+        z_ret = deflateInit2(zs, 9, Z_DEFLATED, window_bits, 9, Z_DEFAULT_STRATEGY);
+        if (z_ret == Z_OK) {
+            index->deflate_initialized = 1;
+            ZX_LOG("Initialized deflate successfully.");
+        } else {
+            ZX_LOG("ERROR: deflateInit2 returned error (%d).", z_ret);
+        }
+    } else {
+        z_ret = deflateReset(zs);
+        if (z_ret == Z_OK) {
+            ZX_LOG("Reset deflate successfully.");
+        } else {
+            ZX_LOG("ERROR: deflateReset returned error (%d).", z_ret);
+        }
+    }
+    return z_ret;
+}
+
 
 /**
  * Read headers of a gzip or zlib file.
@@ -300,6 +450,7 @@ static int read_headers(zidx_index* index,
 
     zs->next_in   = buf;
     zs->avail_in  = 0;
+
 
     header_completed = 0;
     while (!header_completed) {
@@ -402,15 +553,29 @@ static int read_deflate_blocks(zidx_index* index,
             zs->next_in  = buf;
             zs->avail_in = s_read_len;
         }
-        if (block_callback == NULL) {
+        off_t last_offset=index->offset.uncomp;
+        if (block_callback == NULL)
+        {
             z_ret = inflate_and_update_offset(index, zs, Z_SYNC_FLUSH);
-        } else {
+        }
+        else
+        {
             z_ret = inflate_and_update_offset(index, zs, Z_BLOCK);
         }
-        if (z_ret == Z_OK || z_ret == Z_STREAM_END) {
-            if (is_on_block_boundary(zs)) {
+
+        /*Update index running checksum*/
+        //The amount of data we wrote in this pass of the loop is equal to the difference in offsets between last pass of the loop and this one
+        off_t offset_difference=index->offset.uncomp-last_offset;
+		index->running_checksum=crc32(index->running_checksum,zs->next_out-offset_difference,offset_difference);
+
+        if (z_ret == Z_OK || z_ret == Z_STREAM_END)
+        {
+            if (is_on_block_boundary(zs))
+            {
                 ZX_LOG("On block boundary.");
-                if (is_last_deflate_block(zs)) {
+
+                if (is_last_deflate_block(zs))
+                {
                     ZX_LOG("Also last block.");
                     reading_completed = 1;
                     if (index->stream_type == ZX_STREAM_GZIP ||
@@ -431,15 +596,17 @@ static int read_deflate_blocks(zidx_index* index,
                     }
                 }
             }
-            if (zs->avail_out == 0) {
+            if (zs->avail_out == 0)
+            {
                 ZX_LOG("Buffer is full.");
                 reading_completed = 1;
             }
-            if (z_ret == Z_STREAM_END) {
+            if (z_ret == Z_STREAM_END)
+            {
                 ZX_LOG("End of stream reached.");
                 reading_completed = 1;
-                if (index->stream_type == ZX_STREAM_GZIP ||
-                        index->stream_type == ZX_STREAM_GZIP_OR_ZLIB) {
+                if (index->stream_type == ZX_STREAM_GZIP || index->stream_type == ZX_STREAM_GZIP_OR_ZLIB)
+                {
                     index->stream_state = ZX_STATE_FILE_TRAILER;
                 }
             }
@@ -503,6 +670,9 @@ static int read_gzip_trailer(zidx_index* index)
     return ZX_RET_OK;
 }
 
+/**
+ * Creates a zidx index object
+ */
 zidx_index* zidx_index_create()
 {
     zidx_index *index;
@@ -633,6 +803,9 @@ int zidx_index_init_ex(zidx_index *index,
         goto memory_fail;
     }
 
+    /* Initialize running_checksum */
+    index->running_checksum=crc32(0L,Z_NULL,0);
+
     /* Initialize seeking data buffer. */
     seeking_data_buffer = (uint8_t*) malloc(seeking_data_buffer_size);
     if (!seeking_data_buffer) {
@@ -674,6 +847,7 @@ int zidx_index_init_ex(zidx_index *index,
     index->stream_type         = stream_type;
     index->stream_state        = ZX_STATE_FILE_HEADERS;
     index->inflate_initialized = 0;
+    index->deflate_initialized = 0;
 
     /* Set checksum option. */
     index->checksum_option = checksum_option;
@@ -743,7 +917,17 @@ int zidx_index_destroy(zidx_index* index)
             ret = ZX_ERR_ZLIB(z_ret);
         }
     }
-    /* If internal buffers are released succesfully, release the z_stream
+
+    if (index->deflate_initialized)
+    {
+    	z_ret=deflateEnd(index->z_stream);
+    	if (z_ret != Z_OK) {
+			ZX_LOG("ERROR: deflateEnd returned error (%d).", z_ret);
+			ret = ZX_ERR_ZLIB(z_ret);
+		}
+    }
+
+    /* If internal buffers are released successfully, release the z_stream
      * itself. */
     if (ret == ZX_RET_OK) {
         free(index->z_stream);
@@ -790,7 +974,7 @@ int zidx_read_ex(zidx_index* index,
                  zidx_block_callback block_callback,
                  void *callback_context)
 {
-    /* TODO: Implement support for concatanated gzip streams. */
+    /* TODO: Implement support for concatnated gzip streams. */
 
     /* Return value for private (static) function calls. */
     int ret;
@@ -897,7 +1081,6 @@ int zidx_read_ex(zidx_index* index,
             /* Set output buffer and available bytes for output. */
             zs->next_out  = buffer;
             zs->avail_out = nbytes;
-
             ret = read_deflate_blocks(index, block_callback, callback_context);
             if (ret != ZX_RET_OK) {
                 ZX_LOG("ERROR: While reading deflate blocks (%d).", ret);
@@ -1346,7 +1529,8 @@ int zidx_fill_checkpoint(zidx_index* index,
      * zero. If user provides window_data, it's his responsibility to make sure
      * its size is enough to hold window. Typically, 32768 is enough for all
      * windows. */
-    if (new_checkpoint->window_data == NULL && dict_length > 0) {
+    if (new_checkpoint->window_data == NULL && dict_length > 0)
+    {
         new_checkpoint->window_data = (uint8_t*)malloc(dict_length);
         if (new_checkpoint->window_data == NULL) {
             ZX_LOG("ERROR: Couldn't allocate memory for window data.");
@@ -1369,6 +1553,10 @@ int zidx_fill_checkpoint(zidx_index* index,
 
     /* dict_length can't be more than 32768. */
     new_checkpoint->window_length = dict_length;
+
+    /*Instantiate checkpoint checksum.*/
+    /*Checksum will be filled when reading deflate blocks*/
+    new_checkpoint->checksum=crc32(0L,Z_NULL,0);
 
     return ZX_RET_OK;
 
@@ -1411,6 +1599,8 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         return ZX_ERR_CORRUPTED;
     }
 
+    int first_chkpt_flag=0;
+
     /* If there are any checkpoints on the list, the new checkpoint should have
      * greater uncompressed offset than that of last checkpoint. */
     if (index->list_count > 0) {
@@ -1422,6 +1612,10 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
                    (intmax_t)chpt_uncomp, (intmax_t)last_uncomp);
             return ZX_ERR_INVALID_OP;
         }
+    }
+    else
+    {
+    	first_chkpt_flag=1;
     }
 
     /* Open some space in list if needed. */
@@ -1435,6 +1629,9 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
         }
     }
 
+    /* Update checkpoint checksum */
+    checkpoint->checksum=index->running_checksum;
+    index->running_checksum=crc32(0L,Z_NULL,0);
     /* Add new checkpoint.*/
     memcpy(&index->list[index->list_count], checkpoint, sizeof(*checkpoint));
     index->list_count++;
@@ -1443,6 +1640,64 @@ int zidx_add_checkpoint(zidx_index* index, zidx_checkpoint* checkpoint)
      * call. Not the window_data member of it though. */
 
     return ZX_RET_OK;
+}
+
+/**
+ * Returns the number of elements in an index's checkpoint list
+ * \param index the index holding the checkpoint list
+ * \return the number of elements in the checkpoint list
+ */
+int zidx_get_checkpoint_list_len(zidx_index* index)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	return index->list_count;
+}
+
+uint32_t zidx_get_checkpoint_checksum(zidx_index* index, int idx)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	if(idx<0)
+	{
+		ZX_LOG("ERROR: index (%d) is negative.", idx);
+		return ZX_ERR_PARAMS;
+	}
+	else if(idx>=index->list_count)
+	{
+		ZX_LOG("ERROR: index (%d) is larger than checkpoint list size (%d).", idx,index->list_count);
+		return ZX_ERR_PARAMS;
+	}
+	return index->list[idx].checksum;
+}
+
+uint32_t zidx_get_checksum(zidx_index* index)
+{
+	if(index==NULL)
+	{
+		ZX_LOG("ERROR: index is null.");
+		return ZX_ERR_PARAMS;
+	}
+	uint32_t ret=crc32(0L,Z_NULL,0);
+	int x;
+	off_t start=0;
+	off_t end=0;
+	for(x=0;x<index->list_count;x++)
+	{
+		if(x>0)
+		{
+			start=index->list[x-1].offset.uncomp;
+		}
+		end=index->list[x].offset.uncomp;
+		ret=crc32_combine(ret,index->list[x].checksum,end-start);
+	}
+	return ret;
 }
 
 int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
@@ -1468,6 +1723,10 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
     if (offset < 0) {
         ZX_LOG("ERROR: offset (%jd) is negative.", (intmax_t)offset);
         return ZX_ERR_PARAMS;
+    }
+    if(offset>index->uncompressed_size)
+    {
+    	ZX_LOG("ERROR: offset (%jd) is larger than the size of the file (%jd)",(intmax_t) offset, (intmax_t)index->uncompressed_size);
     }
 
     /* Return not found if list is empty. */
@@ -1532,6 +1791,7 @@ int zidx_get_checkpoint_idx(zidx_index* index, off_t offset)
     #undef ZX_OFFSET_
 }
 
+
 zidx_checkpoint* zidx_get_checkpoint(zidx_index* index, int idx)
 {
     if (idx >= 0 && idx < index->list_count) {
@@ -1548,6 +1808,11 @@ off_t zidx_get_checkpoint_offset(const zidx_checkpoint* ckp) {
     return ckp->offset.uncomp;
 }
 
+off_t zidx_get_checkpoint_comp_offset(const zidx_checkpoint* ckp)
+{
+	return ckp->offset.comp;
+}
+
 size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
                                   const void** result)
 {
@@ -1557,6 +1822,15 @@ size_t zidx_get_checkpoint_window(const zidx_checkpoint* ckp,
     }
     *result = ckp->window_data;
     return ckp->window_length;
+}
+
+uint8_t zidx_get_checkpoint_byte(const zidx_checkpoint* chkp)
+{
+	return chkp->offset.comp_byte;
+}
+uint8_t zidx_get_checkpoint_bit_count(const zidx_checkpoint* chkp)
+{
+	return chkp->offset.comp_bits_count;
 }
 
 int zidx_extend_index_size(zidx_index* index, int nmembers)
@@ -1795,6 +2069,8 @@ int zidx_import_ex(zidx_index *index,
     /* Read type of checksum. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 2, "the type of checksum");
 
+    ZX_READ_TEMPLATE_(&index->running_checksum,4,"running checksum");
+
     /* Read checksum of the rest of header. TODO: Not implemented yet. */
     ZX_READ_TEMPLATE_(buf, 4, "checksum of the header");
 
@@ -1903,10 +2179,15 @@ int zidx_import_ex(zidx_index *index,
          * bytes instead of 4 bytes. Need to update file specification. */
         ZX_READ_TEMPLATE_(&it->window_length, sizeof(it->window_length),
                           "window length");
+
+        /*Read checksum data.*/
+        ZX_READ_TEMPLATE_(&it->checksum,sizeof(it->checksum),"checkpoint checksum");
     }
 
     /* TODO: Verify window data start offset. */
 
+
+	uint32_t running_checksum_check=crc32(0L,Z_NULL,0);
     /* Iterate over checkpoints for writing checkpoint window data. */
     for(it = temp_index->list; it < end; it++)
     {
@@ -1919,8 +2200,9 @@ int zidx_import_ex(zidx_index *index,
                 goto end;
             }
             /* Write window data. */
-            ZX_READ_TEMPLATE_(it->window_data, it->window_length,
-                              "window data");
+            ZX_READ_TEMPLATE_(it->window_data, it->window_length,"window data");
+
+
         } else {
             /* This might be unnecessary, given we used calloc above while
              * populating list, but let's keep it. */
@@ -1955,6 +2237,8 @@ end:
     #undef ZX_READ_TEMPLATE_
 
 }
+
+
 
 int zidx_export_ex(zidx_index *index,
                    streamlike_t *stream,
@@ -2037,6 +2321,8 @@ int zidx_export_ex(zidx_index *index,
     /* Write type of checksum. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 2, "the type of checksum");
 
+    ZX_WRITE_TEMPLATE_(&index->running_checksum,4,"running checksum");
+
     /* Write checksum of the rest of header. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the header");
 
@@ -2051,6 +2337,7 @@ int zidx_export_ex(zidx_index *index,
     /* Write the length of uncompressed file. */
     i64 = index->uncompressed_size;
     ZX_WRITE_TEMPLATE_(&i64, 8, "the uncompressed length");
+
 
     /* Checksum of indexed file. TODO: Not implemented yet. */
     ZX_WRITE_TEMPLATE_(&zero, 4, "checksum of the index");
@@ -2115,8 +2402,10 @@ int zidx_export_ex(zidx_index *index,
 
         /* Write length of window data. TODO: Non-conformant. Has a length of 2
          * bytes instead of 4 bytes. Need to update file specification. */
-        ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),
-                           "window length");
+        ZX_WRITE_TEMPLATE_(&it->window_length, sizeof(it->window_length),"window length");
+
+        /*Write checksum of checkpoint*/
+        ZX_WRITE_TEMPLATE_(&it->checksum,sizeof(it->checksum),"checksum of the checkpoint");
 
         /* Update window offset for next checkpoint. */
         window_off += it->window_length;
@@ -2127,8 +2416,8 @@ int zidx_export_ex(zidx_index *index,
     {
         if (it->window_length > 0) {
             /* Write window data. */
-            ZX_WRITE_TEMPLATE_(it->window_data, it->window_length,
-                               "window data");
+            ZX_WRITE_TEMPLATE_(it->window_data, it->window_length,"window data");
+
         }
     }
 
@@ -2143,10 +2432,683 @@ int zidx_import(zidx_index *index, streamlike_t *stream)
 }
 
 int zidx_export(zidx_index *index, streamlike_t *stream)
-
 {
     return zidx_export_ex(index, stream, NULL, NULL);
 }
+
+/**
+ * For use for the modification methods.
+ * Updates checksums after the given checkpoint_idx
+ * checkpoint_idx can be -1	 in the case that the modified block was after the start of the file and before the first checkpoint.
+ */
+int zidx_update_checksum(zidx_index *index,uint32_t new_checksum,int checkpoint_idx)
+{
+	if(checkpoint_idx+1<0 || checkpoint_idx+1>index->list_count)
+	{
+		ZX_LOG("Error idx out of bounds");
+		return ZX_ERR_PARAMS;
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	int idx=checkpoint_idx+1;//shift over to end checkpoint instead of start checkpoint
+	index->list[idx].checksum=new_checksum;
+	return ZX_RET_OK;
+}
+
+int zidx_is_last_checkpoint(zidx_index *index, int idx)
+{
+	if(idx<0 || index==NULL)
+	{
+		return ZX_ERR_PARAMS;
+	}
+	else
+	{
+		return index->list_count-1 == idx ? 1 : 0;
+	}
+}
+
+int zidx_clear_hanging_byte(zidx_index *index, int checkpoint_idx)
+{
+	if(checkpoint_idx<=0)
+	{
+		ZX_LOG("Error: idx cannot be less than 0");
+		return ZX_ERR_PARAMS;
+	}
+	if(checkpoint_idx>index->list_count)
+	{
+		ZX_LOG("Error: idx cannot be larger than %d",index->list_count);
+		return ZX_ERR_PARAMS;
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	index->list[checkpoint_idx].offset.comp_bits_count=0;
+	index->list[checkpoint_idx].offset.comp_byte=0;
+
+	return ZX_RET_OK;
+}
+
+
+/**
+ * if flag=0 then returns uncompressed distance between checkpoints
+ * if flag=!=0 then returns compressed distance between checkpoints
+ */
+off_t zidx_get_block_length(zidx_index *index,int checkpoint_idx,int comp_flag)
+{
+	#define ZX_OFFSET_(idx) (index->list[idx].offset.uncomp)
+	#define ZX_COMP_OFFSET_(idx) (index->list[idx].offset.comp)
+
+	if(checkpoint_idx<=0)
+	{
+		ZX_LOG("Error: idx cannot be less than 0");
+		return ZX_ERR_PARAMS;
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	off_t ret=-1;
+	if(checkpoint_idx+1>=index->list_count)
+	{
+		ZX_LOG("Error, no block after the last checkpoint");
+	}
+	if(!comp_flag)
+	{
+		ret = ZX_OFFSET_(checkpoint_idx+1) - ZX_OFFSET_(checkpoint_idx);
+	}
+	else
+	{
+		ret = ZX_COMP_OFFSET_(checkpoint_idx+1) - ZX_COMP_OFFSET_(checkpoint_idx);
+	}
+
+	#undef ZX_OFFSET_
+	#undef ZX_COMP_OFFSET_
+	return ret;
+}
+
+/**
+ * Aligns blocks after a modification such that every byte after the end of the modified block is byte aligned
+ */
+int zidx_align_to_byte(zidx_index *index,int checkpoint_idx)
+{
+	if(checkpoint_idx<=0)
+	{
+		ZX_LOG("Error: idx cannot be less than 0 (was %d)",checkpoint_idx);
+		return ZX_ERR_PARAMS;
+	}
+	if(checkpoint_idx>=index->list_count)
+	{
+		ZX_LOG("Error: idx (%d) cannot be greater than list count",checkpoint_idx);
+	}
+	if(index==NULL)
+	{
+		ZX_LOG("Error: index cannot be null");
+		return ZX_ERR_PARAMS;
+	}
+	zidx_checkpoint *checkpoint=zidx_get_checkpoint(index,checkpoint_idx);
+
+	//TODO: error check
+	if(checkpoint->offset.comp_bits_count==0)
+	{
+		ZX_LOG("Comp bits count at checkpoint %d was 0, performing no actions.",checkpoint_idx);
+		return ZX_RET_OK;
+	}
+
+	int shamt=checkpoint->offset.comp_bits_count;
+	int x;
+
+	//iterates through all checkpoints
+	for(x=checkpoint_idx;x<index->list_count-1;x++)
+	{
+		unsigned char shifted_first_byte=checkpoint->offset.comp_byte;
+		shifted_first_byte<<=(8-shamt);
+
+		//Writes compressed checkpoint span to a buffer
+		sl_seek(index->comp_stream,checkpoint->offset.comp,SL_SEEK_SET);
+		char *checkpoint_buf;
+		char *new_chkpt_buf;
+		off_t block_len = zidx_get_block_length(index,checkpoint_idx,0);
+		checkpoint_buf=malloc(block_len);
+		new_chkpt_buf=malloc(block_len);
+		sl_read(index->comp_stream,checkpoint_buf,block_len);
+
+		int mask=(1<<shamt)-1;
+
+		shifted_first_byte+=(checkpoint_buf[0]&(mask ^ 0xFF)); //pulls out top bits of the byte
+		new_chkpt_buf[0]=shifted_first_byte;
+		int y;
+		for(y=1;y<block_len-1;y++)
+		{
+			new_chkpt_buf[y]=(checkpoint_buf[y]<<shamt)&0xFF;
+
+			if(x<block_len-1)
+			{
+				unsigned char top_bits=checkpoint_buf[y+1]&(mask ^ 0xFF);
+				new_chkpt_buf[y]|=(top_bits>>8-shamt);
+			}
+		}
+
+		sl_seek(index->comp_stream,checkpoint->offset.comp,SL_SEEK_SET);
+		sl_write(index->comp_stream,new_chkpt_buf,block_len);
+	}
+
+}
+
+/**
+ * Wrapper for deflating a z_stream
+ */
+int zidx_deflate_wrapper(zidx_index *index,void* input, int input_size, void* output, int output_size, int window_bits,int flush)
+{
+	z_stream* zs=index->z_stream;
+
+	zs->avail_in =input_size;
+	zs->next_in  =input;
+	zs->avail_out=output_size;
+	zs->next_out =output;
+
+	if(!index->deflate_initialized)
+	{
+		ZX_LOG("ERROR: Deflate was not initialized before calling this method (see initialize_deflate).");
+		return ZX_ERR_INVALID_OP;
+	}
+	int z_ret;
+	z_ret=deflate(zs,flush);
+	if(z_ret!=Z_OK && z_ret!=Z_STREAM_END)
+	{
+		ZX_LOG("Error deflating (%d)",z_ret);
+		return z_ret;
+	}
+
+	/*unsigned int pending=0;
+	int bits=0;
+	deflatePending(zs,&pending,&bits);
+	ZX_LOG("Number of pending bytes: %d\tNumber of pending bits: %d",pending,bits);*/
+
+	z_ret=deflateEnd(zs); //Returns error because zs stream doesn't return Z_STREAM_END. Need to verify if this is ok for the future, but memory deallocates regardless.
+	//further reading: https://github.com/madler/zlib/issues/250
+	if(z_ret!=Z_OK&&z_ret!=Z_DATA_ERROR)
+	{
+		ZX_LOG("Error ending deflate (%d)",z_ret);
+		return z_ret;
+	}
+
+	index->deflate_initialized=0;
+	ZX_LOG("Deflated correctly to buffer, wrote %lu bytes",(unsigned long)zs->total_out);
+	return zs->total_out;
+}
+
+/**
+ * For use in modification methods. Moves around the blocks in the compressed stream held by index such that they remain consecutive after modification
+ * Pseudocode process:
+ *
+ * 1: Compute shift_amount as the difference between new_comp_offset and the existing comp offset from index->list[checkpoint_idx+1] //important note: shift amount can be positive (grows after compression) or negative (shrinks after compression)
+ * 		1a: if checkpoint_idx is -1, then it's the first block that has no corresponding checkpoint. Therefore, just update all the checkpoints in the file.
+ * 2: Copy the entire comp stream after the new offset to a buffer (would it be better to do this by checkpoints?)
+ * 3: Paste the buffer so the start is immediately after new_offset.
+ * 4: For each checkpoint after checkpoint_idx, update offset.comp to be offset.comp+shift_amount //note: don't need to update offset.uncomp since we only replace and don't delete chars. Chars are still there
+ * 5: Update related size fields in index (i think just window_length and index->compressed_size?)
+ */
+//todo: errorcheck s_ret by comparing to buflen (if s_ret<buflen, then error)
+int zidx_write_to_comp_stream(zidx_index *index, int checkpoint_idx, void* buf, off_t buf_len)
+{
+	off_t shamt=0;
+	int s_ret;
+	int zx_ret;
+	//End of block corresponds to the next checkpoint.... so if the currently written block correpsonds to checkpoint c, it ends *near* checkpoint c+1. Therefore, update all checkpoints c+1 onwards. This works for the case of idx==-1
+	//Edge case: in the event that the last block is modified, just update the last checkpoint -> offset.comp, since there's no data after the checkpoint that needs to be shifted.
+	//TODO: Error checking params
+
+	if(index->comp_stream==NULL)
+	{
+		ZX_LOG("Error opening stream");
+		return ZX_ERR_STREAM_READ;
+	}
+	if(buf_len<=0)
+	{
+		ZX_LOG("ERROR: buffer length value too small!");
+		return ZX_ERR_PARAMS;
+	}
+	if(checkpoint_idx<-1 || checkpoint_idx >= index->list_count)
+	{
+		ZX_LOG("ERROR: checkpoint_idx OOB (%d)",checkpoint_idx);
+		return ZX_ERR_PARAMS;
+	}
+	if(zidx_is_last_checkpoint(index,checkpoint_idx+1))
+	{
+		//if at the last checkpoint, we just need to write to the last part of the file (no shifting since there's no data to be shifted after the written portion
+		zidx_checkpoint* start_checkpoint=zidx_get_checkpoint(index,checkpoint_idx);
+		sl_seek(index->comp_stream,start_checkpoint->offset.comp,SL_SEEK_SET);
+		sl_write(index->comp_stream,buf,buf_len);
+		index->compressed_size=start_checkpoint->offset.comp + buf_len;
+
+		//TODO: error check
+		s_ret=sl_seek(index->comp_stream,start_checkpoint->offset.comp,SL_SEEK_CUR); //seek to last checkpoint
+		s_ret=sl_write(index->comp_stream,buf,buf_len);
+
+	}
+	else if(checkpoint_idx==-1)
+	{
+		//if in the space between start of file and first checkpoint, follow the same logic as the else statement below, sans "start_checkpoint" operations
+		zidx_checkpoint* end_checkpoint=zidx_get_checkpoint(index,0);
+		//todo: error check
+		off_t new_block_boundary=buf_len;
+		off_t old_block_boundary=end_checkpoint->offset.comp;
+
+		if(new_block_boundary==old_block_boundary)
+		{
+			ZX_LOG("Warning: new offset and old offset match, writing in place without shifting.");
+			//TODO: error check
+			s_ret=sl_write(index->comp_stream,buf,buf_len);
+
+			return ZX_RET_OK;
+		}
+
+		off_t old_offset_to_eof=index->compressed_size-old_block_boundary; //first unchanged byte after modification block to eof
+		uint8_t* move_buf=(uint8_t*) malloc(old_offset_to_eof);
+
+		zx_ret=zidx_rewind(index); //seek to start of file
+		if(zx_ret!=ZX_RET_OK)
+		{
+			ZX_LOG("ERROR Seeking to start of modify");
+			return ZX_ERR_STREAM_SEEK;
+		}
+		s_ret=sl_seek(index->comp_stream,old_block_boundary,SL_SEEK_CUR);
+		if(s_ret!=0)
+		{
+			ZX_LOG("Error seeking in comp stream");
+			return ZX_ERR_STREAM_SEEK;
+		}
+
+		s_ret=sl_read(index->comp_stream,move_buf,old_offset_to_eof);
+		ZX_LOG("Read error: %d",sl_error(index->comp_stream));
+		if(s_ret!=old_offset_to_eof)
+		{
+			ZX_LOG("Error reading from comp stream");
+			return ZX_ERR_STREAM_SEEK;
+		}
+
+		s_ret=sl_seek(index->comp_stream,0,SL_SEEK_SET);
+		if(s_ret!=0)
+		{
+			ZX_LOG("Error seeking in comp stream");
+			return ZX_ERR_STREAM_SEEK;
+		}
+
+		s_ret=sl_write(index->comp_stream,buf,buf_len);
+		if(s_ret!=buf_len)
+		{
+			ZX_LOG("ERROR writing to comp stream.");
+			return ZX_ERR_STREAM_WRITE;
+		}
+
+		s_ret=sl_write(index->comp_stream,move_buf,old_offset_to_eof);
+		if(s_ret!=old_offset_to_eof)
+		{
+			ZX_LOG("ERROR writing to comp stream.");
+			return ZX_ERR_STREAM_WRITE;
+		}
+		index->compressed_size+=(new_block_boundary-old_block_boundary);
+		free(move_buf);
+	}
+	else
+	{
+		//case where we're in a block with a checkpoint before and after
+		//copy out everything from checkpoint->offset.comp+buf_len to eof to a move_buf, then write buf to comp stream, then write move_buf after that
+		zidx_checkpoint* start_checkpoint=zidx_get_checkpoint(index,checkpoint_idx);
+		zidx_checkpoint* end_checkpoint=zidx_get_checkpoint(index,checkpoint_idx+1);
+			//error check
+		off_t new_block_boundary=start_checkpoint->offset.comp+buf_len;
+		off_t old_block_boundary=end_checkpoint->offset.comp;
+
+		if(new_block_boundary==old_block_boundary) //case for if the new thing to write perfectly fits in the existing block
+		{
+			ZX_LOG("Warning: new offset and old offset match, writing in place without shifting.");
+			//TODO: error check
+			s_ret=sl_write(index->comp_stream,buf,buf_len);
+
+			return ZX_RET_OK;
+		}
+		else{
+			ZX_LOG("Old block length was: %zu\t New block length will be %zu",end_checkpoint->offset.comp-start_checkpoint->offset.comp,buf_len);
+		}
+
+		s_ret=sl_seek(index->comp_stream,old_block_boundary,SL_SEEK_SET);
+		if (s_ret != 0)
+		{
+			ZX_LOG("ERROR: Couldn't seek in stream (%d).", s_ret);
+			return ZX_ERR_STREAM_SEEK;
+		}
+
+		off_t old_offset_to_eof=index->compressed_size-old_block_boundary;
+		uint8_t* move_buf=(uint8_t*) malloc(old_offset_to_eof);
+
+		s_ret=sl_read(index->comp_stream,move_buf,old_offset_to_eof);
+		if(s_ret!=old_offset_to_eof)
+		{
+			ZX_LOG("ERROR: Reading from end checkpoint to EOF (%d)",s_ret);
+			return ZX_ERR_STREAM_SEEK;
+		}
+		//todo check the read
+
+		//replace existing block with new block
+		s_ret=sl_seek(index->comp_stream,start_checkpoint->offset.comp,SL_SEEK_SET);
+		s_ret=sl_write(index->comp_stream,buf,buf_len);
+		if(s_ret!=buf_len)
+		{
+			ZX_LOG("ERROR: Writing in new block (%d)",s_ret);
+			return ZX_ERR_STREAM_WRITE;
+		}
+
+		//fill in after the new block with the old contents
+		s_ret=sl_seek(index->comp_stream,new_block_boundary,SL_SEEK_SET);
+		s_ret=sl_write(index->comp_stream,move_buf,old_offset_to_eof);
+		if(s_ret!=old_offset_to_eof)
+		{
+			ZX_LOG("ERROR: Writing in blocks after modified block (%d)",s_ret);
+			return ZX_ERR_STREAM_WRITE;
+		}
+		//update the total size of the compressed contents
+		index->compressed_size+=new_block_boundary-old_block_boundary;
+	}
+	zx_ret=zidx_rewind(index);
+	if(zx_ret!=ZX_RET_OK)
+	{
+		ZX_LOG("Error resetting seek pointer to start of file");
+		return ZX_ERR_STREAM_SEEK;
+	}
+	return ZX_RET_OK;
+}
+/**
+ * Changes a single byte in the gzip file and updates corresponding fields in index
+ * Pseudocode process:
+ * Let offset be the position that we're changing.
+ * 1: Inflate existing comp_stream from offset to next block. Let this buf be called pre-change
+ * 2: Change byte according to the new_char param (call this post-change)
+ * 3: Deflate post-change to a now compressed buffer
+ * 4: Replace the contents of the comp_stream with the new compressed buffer.
+ * 5: Call the shuffle function to reorder comp stream
+ * 6: Recompute checksums (ideally read previous block boundary running checksum, combine with post change, then update all checkpoints after offset. Issue: Getting previous block boundary checksum)
+ *  TODO: REMOVE OFFSET PARAM, we should be using the existing parameter for index->uncomp offset
+ */
+int zidx_single_byte_modify(zidx_index *index, off_t offset, char new_char)
+{
+	const int length=16;//arbitrary length to read and write to
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (offset < 0) {
+		ZX_LOG("ERROR: offset (%jd) is negative.", (intmax_t)offset);
+		return ZX_ERR_PARAMS;
+	}
+
+	int s_read_len;
+
+	int s_ret;
+	int z_ret;
+	int zx_ret;
+
+	zidx_checkpoint *checkpoint;
+	int checkpoint_idx;
+	off_t block_length;
+
+	off_t comp_block_length;
+	off_t comp_block_start;
+	off_t inter_block_offset;
+
+	zidx_checkpoint *next_checkpoint;
+	int next_checkpoint_idx;
+
+	if(offset<index->list[0].offset.uncomp) //case for if the offset is between start of file and first checkpoint
+	{
+		ZX_LOG("Offset is between start of file and first checkpoint (Offset: %jd) (First checkpoint: %jd)",
+				(intmax_t)offset,
+				(intmax_t)index->list[0].offset.uncomp);
+		inter_block_offset=offset;
+		checkpoint_idx=-1;
+		block_length=index->list[0].offset.uncomp;
+		comp_block_length=index->list[0].offset.comp;
+		comp_block_start=0;
+		zx_ret=zidx_rewind(index);
+		if(zx_ret!=ZX_RET_OK)
+		{
+			ZX_LOG("ERROR in rewinding pointer to start of file");
+			return zx_ret;
+		}
+	}
+	else
+	{
+		checkpoint_idx=zidx_get_checkpoint_idx(index,offset);
+		if(checkpoint_idx==ZX_ERR_NOT_FOUND)
+		{
+			ZX_LOG("Error: was not able to find corresponding checkpoint for given offset (%jd)", (intmax_t)offset);
+			return ZX_ERR_NOT_FOUND;
+		}
+		block_length=zidx_get_block_length(index,checkpoint_idx,0);
+		ZX_LOG("Block length: %zu",block_length);
+		comp_block_length=zidx_get_block_length(index,checkpoint_idx,1);
+		//todo: error check get block length
+		checkpoint = zidx_get_checkpoint(index,checkpoint_idx);
+		//todo: error check getting checkpoint
+		comp_block_start=checkpoint->offset.comp;
+		if(zidx_is_last_checkpoint(index,checkpoint_idx))
+		{
+			ZX_LOG("ERROR: This should be unreachable? Unless changing last byte in file?");
+			return ZX_ERR_NOT_IMPLEMENTED;
+		}
+		else
+		{
+			next_checkpoint_idx=checkpoint_idx+1;
+		}
+
+		inter_block_offset = offset - checkpoint->offset.uncomp;
+
+		zidx_seek(index,checkpoint->offset.uncomp); //todo: error check with zx_ret
+		if(zx_ret!=ZX_RET_OK)
+		{
+			ZX_LOG("ERROR in seeking pointer to start of checkpoint %d",checkpoint_idx);
+			return zx_ret;
+		}
+	}
+
+	char write_buf[block_length];
+	char def_buf[block_length]; //todo: check to see by how much data could possibly grow by
+	/*/* Handle if there is a byte shared between two consecutive blocks.
+        if (checkpoint->offset.comp_bits_count > 0) {
+            /* Higher bits of the byte should be pushed to zlib before calling
+             * inflate.
+            byte = checkpoint->offset.comp_byte;
+            byte >>= (8 - checkpoint->offset.comp_bits_count);
+
+            /* Push these bits to zlib.
+            z_ret = inflatePrime(index->z_stream,
+                                 checkpoint->offset.comp_bits_count,
+                                 byte);
+            if (z_ret != Z_OK) {
+                ZX_LOG("ERROR: inflatePrime error (%d).", z_ret);
+                return ZX_ERR_ZLIB(z_ret);
+            }
+        }*/
+	if(checkpoint->offset.comp_bits_count>0)
+	{
+		uint8_t byte=checkpoint->offset.comp_byte;
+		byte >>=(8-checkpoint->offset.comp_bits_count);
+		//z_ret=inflatePrime(index->z_stream,checkpoint->offset.comp_bits_count,byte);
+		if(z_ret!=Z_OK)
+		{
+			ZX_LOG("ERROR: inflatePrime error (%d).",z_ret);
+			return ZX_ERR_ZLIB(z_ret);
+		}
+	}
+	ZX_LOG("Writing block (%d) to buffer",checkpoint_idx);
+	zidx_read(index,(uint8_t*) write_buf, block_length);
+	/*
+	if(write_buf[inter_block_offset]==new_char)
+	{
+		ZX_LOG("Warning: New_char is the same as existing char (%c). No action taken",new_char);
+		return ZX_RET_OK;
+	}
+	write_buf[inter_block_offset]=new_char;
+	*/
+	uint32_t new_checksum=crc32(0L,Z_NULL,0);
+	new_checksum=crc32(new_checksum,write_buf,block_length);
+	ZX_LOG("Calculated new checksum to be %u",new_checksum);
+	int wb=-index->window_bits;
+
+	z_ret=initialize_deflate(index,wb);
+	if (z_ret != Z_OK) {
+		ZX_LOG("ERROR: deflate initialization returned error (%d).",z_ret);
+		return ZX_ERR_ZLIB(z_ret);
+	}
+
+	int flush=0; //If we're deflating the last block, we want to terminate the stream with Z_STREAM_END.
+	if(zidx_is_last_checkpoint(index,checkpoint_idx))
+	{
+		flush=Z_SYNC_FLUSH;
+	}
+	else
+	{
+		flush=Z_SYNC_FLUSH;
+	}
+
+	//TODO: add bits to stream here
+	zx_ret=zidx_deflate_wrapper(index, write_buf, block_length, def_buf, block_length, wb, flush);
+	if(zx_ret<0)
+	{
+		ZX_LOG("ERROR: while calling deflate wrapper from single byte modify (%d)",zx_ret);
+		return zx_ret;
+	}
+	int new_comp_block_length=zx_ret;
+
+	zx_ret=zidx_write_to_comp_stream(index,checkpoint_idx,def_buf,new_comp_block_length);
+	if(zx_ret!=ZX_RET_OK)
+	{
+		ZX_LOG("Error in writing to comp stream function (%d)",zx_ret);
+		return zx_ret;
+	}
+	else
+	{
+		ZX_LOG("Successfully wrote the modified block into place.");
+	}
+	zx_ret=zidx_clear_hanging_byte(index,checkpoint_idx);
+	if(zx_ret!=ZX_RET_OK)
+	{
+		ZX_LOG("Error in clearing bits from checkpoint after writing block into place");
+		return zx_ret;
+	}
+
+	//update checksum
+	zx_ret=zidx_update_checksum(index,new_checksum,checkpoint_idx);
+
+	int shamt=new_comp_block_length-comp_block_length;
+	while(checkpoint_idx+1<index->list_count)	//update compressed offsets of each affected checkpoint
+	{
+		//todo: Error here for checkpoint_idx != 1
+		zidx_checkpoint* curr_checkpoint=zidx_get_checkpoint(index,checkpoint_idx+1);
+		if(curr_checkpoint==NULL)
+		{
+			ZX_LOG("ERROR: Accessing checkpoint (%d) failed.",checkpoint_idx);
+			return ZX_ERR_NOT_FOUND;
+		}
+		ZX_LOG("Updated checkpoint %d offset",checkpoint_idx);
+		curr_checkpoint->offset.comp+=shamt;
+		checkpoint_idx++;
+	}
+
+
+	if(zx_ret!=ZX_RET_OK)
+	{
+		ZX_LOG("ERROR: Found in updating checksums (%d)",z_ret);
+		return z_ret;
+	}
+	ZX_LOG("Updated checksums");
+
+	//todo: Add last 32 kb check here
+	//todo: if in last 32kb, recompute next block too
+	s_ret=sl_seek(index->comp_stream,0,SL_SEEK_SET);
+
+	ZX_LOG("Changed byte at offset (%jd) to (%c)",(intmax_t) offset,new_char);
+	return ZX_RET_OK;
+}
+/**
+ * Changes up to 32768 bytes in the gzip file. At most this change will affect 2 blocks.
+ */
+int zidx_small_modify(zidx_index *index, off_t offset, char *buffer, int length)
+{
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (buffer == NULL) {
+		ZX_LOG("ERROR: buffer is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (length < 0) {
+		ZX_LOG("ERROR: length can't be negative.");
+		return ZX_ERR_PARAMS;
+	}
+	else if(length>32768)
+	{
+		ZX_LOG("ERROR: length can't be > 32768.");
+		return ZX_ERR_PARAMS;
+	}
+
+	return ZX_ERR_NOT_IMPLEMENTED;
+}
+/**
+ * Wrapper for zidx_small_modify. For modifications greater than 32kb, break it up into 32kb chunks
+ */
+//todo: change 32768 to index->window_bits
+int zidx_modify(zidx_index *index, off_t offset, char *buffer, int length)
+{
+	if (index == NULL) {
+		ZX_LOG("ERROR: index is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (buffer == NULL) {
+		ZX_LOG("ERROR: buffer is NULL.");
+		return ZX_ERR_PARAMS;
+	}
+	if (length < 0) {
+		ZX_LOG("ERROR: length can't be negative.");
+		return ZX_ERR_PARAMS;
+	}
+	if(index->comp_stream->write==NULL)
+	{
+		ZX_LOG("ERROR: Cannot write to stream. ");
+		return ZX_ERR_PARAMS;
+	}
+	else if (length==1)
+	{
+		ZX_LOG("Single byte change enabled");
+		return zidx_single_byte_modify(index,offset,buffer[0]);
+	}
+	else if(length<=32768)
+	{
+		return zidx_small_modify(index,offset,buffer,length);
+	}
+	else
+	{
+		int small_changes=length/32768;
+		int x;
+		for(x=0;x<small_changes;x++)
+		{
+			int ret=zidx_small_modify(index,offset,buffer+(x*32768),x==small_changes ? length%32768 : length/32768);
+			if(ret != ZX_RET_OK)
+			{
+				return ret;
+			}
+		}
+		return ZX_RET_OK;
+	}
+}
+
 
 #ifdef __cplusplus
 } // extern "C"
